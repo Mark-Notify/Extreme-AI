@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>Extreme AI v4 – XAUUSD Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo">EX</div>
+        <div>
+          <div class="brand-title">Extreme AI v4</div>
+          <div class="brand-subtitle">Gold Trading Intelligence</div>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <h3>Connection</h3>
+        <div class="pill pill-status" id="ws_status">
+          <span class="dot dot-offline"></span>
+          <span id="ws_status_text">Disconnected</span>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <h3>Symbol</h3>
+        <div class="sidebar-card">
+          <div class="symbol-main">
+            <span id="symbol">XAUUSD</span>
+          </div>
+          <div class="symbol-sub">
+            <span>Last Price</span>
+            <span id="price">-</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <h3>AI Engine</h3>
+        <div class="sidebar-card">
+          <div class="engine-row">
+            <span>Mode</span>
+            <span class="tag" id="ai_dir">-</span>
+          </div>
+          <div class="engine-row">
+            <span>Use LSTM</span>
+            <span class="tag tag-muted" id="use_lstm">NO</span>
+          </div>
+          <div class="engine-row">
+            <span>Regime</span>
+            <span class="tag tag-muted" id="regime">-</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="footer-label">Loop Started</div>
+        <div class="footer-value" id="loop_started">-</div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+      <!-- Top: AI Overview -->
+      <section class="row">
+        <div class="card card-ai">
+          <div class="card-header">
+            <h2>AI Probability</h2>
+            <span class="badge" id="rsi_zone">-</span>
+          </div>
+          <div class="ai-grid">
+            <div class="ai-gauge">
+              <div class="gauge-outer">
+                <div class="gauge-inner">
+                  <div class="gauge-value" id="ai_up_big">0%</div>
+                  <div class="gauge-label">UP Probability</div>
+                </div>
+              </div>
+              <div class="gauge-extra">
+                <span>Down: <strong id="ai_down">-</strong></span>
+                <span>Confidence: <strong id="ai_conf">-</strong></span>
+              </div>
+            </div>
+            <div class="ai-meta">
+              <div class="meta-row">
+                <span>Price</span>
+                <span id="price_big">-</span>
+              </div>
+              <div class="meta-row">
+                <span>RSI</span>
+                <span id="rsi">-</span>
+              </div>
+              <div class="meta-row">
+                <span>MACD Hist</span>
+                <span id="macd_hist">-</span>
+              </div>
+              <div class="meta-row">
+                <span>ATR</span>
+                <span id="atr">-</span>
+              </div>
+              <div class="meta-row">
+                <span>ADX</span>
+                <span id="adx">-</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Middle: Market & Signals & Trading Control -->
+      <section class="row row-3">
+        <div class="card">
+          <div class="card-header">
+            <h2>Market Snapshot</h2>
+          </div>
+          <div class="stats-list">
+            <div class="stat-item">
+              <span class="stat-label">RSI Zone</span>
+              <span class="stat-value" id="rsi_zone_small">-</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Regime</span>
+              <span class="stat-value" id="regime_small">-</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Direction</span>
+              <span class="stat-value" id="ai_dir_small">-</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2>Signals</h2>
+          </div>
+          <div class="signals">
+            <div class="signal-row">
+              <span>PRE Signal</span>
+              <span id="pre_signal" class="signal-badge signal-off">-</span>
+            </div>
+            <div class="signal-row">
+              <span>CONFIRM Signal</span>
+              <span id="confirm_signal" class="signal-badge signal-off">-</span>
+            </div>
+            <div class="signal-time">
+              <span>Last PRE:</span>
+              <span id="pre_ts">-</span>
+            </div>
+            <div class="signal-time">
+              <span>Last CONFIRM:</span>
+              <span id="confirm_ts">-</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Trading Control Card -->
+        <div class="card">
+          <div class="card-header">
+            <h2>Trading Control</h2>
+          </div>
+          <div class="trade-controls">
+            <div class="button-row">
+              <button id="btn_buy" class="btn btn-buy">BUY</button>
+              <button id="btn_sell" class="btn btn-sell">SELL</button>
+              <button id="btn_auto_order" class="btn btn-auto">AUTO (AI)</button>
+            </div>
+            <div class="button-row">
+              <button id="btn_train_ai" class="btn btn-train">Train AI</button>
+            </div>
+            <div class="trade-status">
+              <div>Last trade: <span id="trade_status">-</span></div>
+              <div>Train status: <span id="train_status">Idle</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Bottom: Engine Notes + Raw JSON -->
+      <section class="row">
+        <div class="card card-json">
+          <div class="card-header">
+            <h2>Engine Notes & AI Raw State</h2>
+          </div>
+          <div class="engine-notes">
+            <p>• Rule-based + LSTM blend (70/30)</p>
+            <p>• PRE = Oversold/Overbought หรือ MACD ผิดปกติ</p>
+            <p>• CONFIRM = Prob > 0.65 + MACD + Regime match</p>
+            <p class="note-muted">
+              ปุ่ม BUY / SELL = Manual Order, AUTO (AI) ให้ AI เลือกฝั่งจาก prob ล่าสุด
+            </p>
+          </div>
+          <pre id="raw_json">รอข้อมูลจากบอท Extreme AI...</pre>
+        </div>
+      </section>
+      
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

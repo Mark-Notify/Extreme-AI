@@ -1,0 +1,21 @@
+{
+  "loop_started": "2025-12-09T12:47:39.350482+00:00",
+  "symbol": "XAUUSDm",
+  "price": 4203.475,
+  "rsi": 59.83543876613236,
+  "rsi_zone": "Neutral",
+  "macd_hist": 2.61174450471836,
+  "atr": 9.66842857142852,
+  "adx": 22.247690121939556,
+  "ai_prob_up": 0.5458523104245123,
+  "ai_prob_down": 0.4541476895754877,
+  "ai_direction": "UP",
+  "ai_confidence": 0.09170462084902464,
+  "regime": "trending",
+  "use_lstm": true,
+  "pre_signal": true,
+  "confirm_signal": false,
+  "pre_timestamp": "2025-12-09T12:47:39.350482+00:00",
+  "confirm_timestamp": null,
+  "open_trades": 1
+}

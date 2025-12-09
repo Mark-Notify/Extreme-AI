@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Extreme AI v4 – Trading Desk</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    :root {
+      --accent: #a3e635;          /* lime / mint */
+      --accent-soft: rgba(163, 230, 53, 0.16);
+      --accent-strong: #bef264;
+      --accent-text: #ecfccb;
+
+      --danger: #fb7185;
+      --danger-soft: rgba(248, 113, 113, 0.16);
+      --danger-text: #ffe4e6;
+
+      --card: rgba(15, 23, 42, 0.96);
+      --card-soft: rgba(15, 23, 42, 0.9);
+      --border-subtle: rgba(148, 163, 184, 0.22);
+      --border-strong: rgba(148, 163, 184, 0.45);
+      --chip-bg: rgba(15, 23, 42, 0.9);
+      --text-main: #e5e7eb;
+      --text-muted: #9ca3af;
+    }
+
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 0% 0%, rgba(236, 72, 153, 0.22), transparent 55%),
+        radial-gradient(circle at 100% 0%, rgba(52, 211, 153, 0.18), transparent 55%),
+        radial-gradient(circle at 50% 100%, rgba(55, 65, 81, 0.6), transparent 60%),
+        #020617;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      color: var(--text-main);
+    }
+
+    .card {
+      background: linear-gradient(145deg, var(--card), #020617);
+      border-radius: 22px;
+      border: 1px solid var(--border-subtle);
+      box-shadow:
+        0 26px 60px rgba(15, 23, 42, 0.95),
+        0 0 0 1px rgba(15, 23, 42, 0.95);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      border-radius: 999px;
+      padding: 0.2rem 0.75rem;
+      font-size: 0.7rem;
+      font-weight: 500;
+      background-color: var(--chip-bg);
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      color: #e5e7eb;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      border-radius: 0.9rem;
+      padding: 0.55rem 1.1rem;
+      font-size: 0.8rem;
+      font-weight: 500;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition:
+        transform 0.08s ease,
+        box-shadow 0.08s ease,
+        background 0.16s ease,
+        border-color 0.16s ease,
+        color 0.16s ease;
+      white-space: nowrap;
+    }
+    .btn:active {
+      transform: translateY(1px) scale(0.99);
+      box-shadow: none;
+    }
+    .btn:disabled {
+      opacity: 0.55;
+      cursor: default;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .btn-primary {
+      background:
+        radial-gradient(circle at 0 -40%, rgba(255, 255, 255, 0.2), transparent 60%),
+        linear-gradient(135deg, #4ade80, var(--accent));
+      color: #020617;
+      box-shadow:
+        0 0 18px rgba(74, 222, 128, 0.8),
+        0 14px 35px rgba(15, 23, 42, 0.9);
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+    }
+
+    .btn-danger {
+      background:
+        radial-gradient(circle at 0 -40%, rgba(255, 255, 255, 0.18), transparent 60%),
+        linear-gradient(135deg, #fb7185, #f97373);
+      color: #020617;
+      box-shadow:
+        0 0 18px rgba(244, 114, 182, 0.85),
+        0 14px 35px rgba(15, 23, 42, 0.9);
+    }
+    .btn-danger:hover:not(:disabled) {
+      background: linear-gradient(135deg, #fb7185, #fecaca);
+    }
+
+    .btn-soft {
+      background: var(--card-soft);
+      color: var(--text-main);
+      border-color: rgba(51, 65, 85, 0.85);
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.9);
+    }
+    .btn-soft:hover:not(:disabled) {
+      background: rgba(15, 23, 42, 0.98);
+      border-color: rgba(148, 163, 184, 0.65);
+    }
+
+    .status-dot {
+      height: 10px;
+      width: 10px;
+      border-radius: 999px;
+      box-shadow: 0 0 0 0 rgba(163, 230, 53, 0.22);
+      transition:
+        background 0.16s ease,
+        box-shadow 0.16s ease,
+        transform 0.16s ease;
+    }
+    .status-online {
+      background: var(--accent);
+      box-shadow: 0 0 0 6px rgba(163, 230, 53, 0.2);
+    }
+    .status-offline {
+      background: var(--danger);
+      box-shadow: 0 0 0 6px rgba(248, 113, 113, 0.2);
+    }
+
+    .gauge-ring {
+      transition: stroke-dashoffset 0.4s ease-out;
+    }
+
+    .direction-badge {
+      background-color: rgba(15, 23, 42, 0.92);
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.45);
+      padding: 0.15rem 0.75rem;
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    .badge-bull {
+      border-color: var(--accent-strong);
+      color: var(--accent-text);
+      box-shadow: 0 0 0 1px rgba(190, 242, 100, 0.4);
+    }
+    .badge-bear {
+      border-color: var(--danger);
+      color: var(--danger-text);
+      box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.4);
+    }
+
+    .badge-pre-active {
+      background: rgba(251, 191, 36, 0.14);
+      border-color: rgba(234, 179, 8, 0.9);
+      color: #fef3c7;
+    }
+    .badge-confirm-active {
+      background: var(--accent-soft);
+      border-color: var(--accent-strong);
+      color: var(--accent-text);
+    }
+
+    .fade-item {
+      opacity: 0;
+      transform: translateY(2px);
+    }
+    .fade-item.show {
+      opacity: 1;
+      transform: translateY(0);
+      transition: opacity 0.18s ease-out, transform 0.18s ease-out;
+    }
+
+    #rawState {
+      background:
+        radial-gradient(circle at 0 0, rgba(15, 23, 42, 1), rgba(15, 23, 42, 0.96));
+      border-radius: 18px;
+      border: 1px solid rgba(55, 65, 81, 0.95);
+      box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.96);
+    }
+
+    body #gaugeGradient stop:nth-of-type(1) { stop-color: #4ade80; }
+    body #gaugeGradient stop:nth-of-type(2) { stop-color: #f59e0b; }
+    body #gaugeGradient stop:nth-of-type(3) { stop-color: #fb7185; }
+  </style>
+</head>
+<body class="text-slate-100">
+  <!-- Top bar -->
+  <header class="border-b border-slate-800/80 bg-slate-950/70 backdrop-blur-xl sticky top-0 z-30">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="h-9 w-9 rounded-2xl bg-gradient-to-br from-emerald-400/20 via-pink-500/10 to-slate-900 border border-emerald-300/40 flex items-center justify-center shadow-lg shadow-emerald-500/40">
+          <span class="text-[11px] font-semibold tracking-[0.22em] text-emerald-100">XA</span>
+        </div>
+        <div>
+          <div class="flex flex-wrap items-center gap-2">
+            <h1 class="text-sm md:text-base font-semibold tracking-wide">
+              Extreme AI v4 <span class="text-slate-400">Trading Desk</span>
+            </h1>
+            <span id="engineModeBadge"
+                  class="pill">
+              Engine: <span id="engineModeText">RULE</span>
+            </span>
+          </div>
+          <p class="text-[11px] text-slate-500 mt-0.5">
+            XAUUSD · Realtime Model Monitor
+          </p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-4 text-xs">
+        <div class="hidden sm:flex flex-col items-end">
+          <span class="text-[11px] text-slate-500">Last loop</span>
+          <span id="loopTime" class="font-mono text-[11px] text-slate-200">-</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span id="wsDot" class="status-dot status-online"></span>
+          <span id="wsStatusText" class="text-[11px] text-slate-300">Live</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="max-w-6xl mx-auto px-4 py-4 md:py-6 space-y-4 md:space-y-6">
+    <div class="grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(0,1.1fr)] gap-4 md:gap-6">
+      <!-- Left column -->
+      <section class="space-y-4 md:space-y-6">
+        <!-- Top row: price + AI gauge + signals -->
+        <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1.1fr)] gap-4 md:gap-6">
+          <!-- Price card -->
+          <div class="card px-4 py-4 md:px-5 md:py-5">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <p class="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                  Instrument
+                </p>
+                <div class="flex items-baseline gap-2 mt-1">
+                  <h2 id="symbol" class="text-lg md:text-xl font-semibold tracking-tight">XAUUSD</h2>
+                  <span class="pill text-[11px]">
+                    TF <span id="timeframe" class="font-mono">M1</span>
+                  </span>
+                </div>
+              </div>
+              <div class="text-right">
+                <p class="text-[11px] text-slate-500">Open trades</p>
+                <p id="openTrades" class="font-mono text-lg">0</p>
+              </div>
+            </div>
+
+            <div class="space-y-4">
+              <div>
+                <p class="text-[11px] text-slate-500 mb-1.5">Last price</p>
+                <div class="flex items-baseline gap-2">
+                  <span id="price" class="text-3xl font-semibold tracking-tight">-</span>
+                  <span id="priceDirectionBadge"
+                        class="direction-badge text-[11px]">
+                    -
+                  </span>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-3 gap-3 text-[11px]">
+                <div>
+                  <p class="text-slate-500 mb-0.5">Regime</p>
+                  <p id="regime" class="text-slate-200">-</p>
+                </div>
+                <div>
+                  <p class="text-slate-500 mb-0.5">RSI / Zone</p>
+                  <p class="text-slate-200">
+                    <span id="rsi">-</span>
+                    <span class="text-slate-500">(<span id="rsiZone">-</span>)</span>
+                  </p>
+                </div>
+                <div>
+                  <p class="text-slate-500 mb-0.5">ADX</p>
+                  <p id="adx" class="text-slate-200">-</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI gauge + engine status -->
+          <div class="card px-4 py-4 md:px-5 md:py-5 flex flex-col gap-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                  AI Outlook
+                </p>
+                <p id="aiDirectionLabel" class="text-[11px] text-emerald-200 mt-1">
+                  -
+                </p>
+              </div>
+              <div class="text-right text-[11px] text-slate-500 space-y-0.5">
+                <div>Prob. UP / Conf.</div>
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-3">
+              <div class="relative mx-auto w-40 h-24">
+                <svg viewBox="0 0 120 70" class="w-full h-full">
+                  <path
+                    d="M10 60 A 50 50 0 0 1 110 60"
+                    fill="none"
+                    stroke="#020617"
+                    stroke-width="9"
+                    stroke-linecap="round"
+                  ></path>
+                  <path
+                    id="gaugeArc"
+                    d="M10 60 A 50 50 0 0 1 110 60"
+                    fill="none"
+                    stroke="url(#gaugeGradient)"
+                    stroke-width="9"
+                    stroke-linecap="round"
+                    stroke-dasharray="157"
+                    stroke-dashoffset="78"
+                    class="gauge-ring"
+                  ></path>
+                  <defs>
+                    <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stop-color="#4ade80" />
+                      <stop offset="50%" stop-color="#f59e0b" />
+                      <stop offset="100%" stop-color="#fb7185" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+                <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <div id="aiProbUp" class="text-xl font-semibold">-</div>
+                  <div class="text-[11px] text-slate-400">Prob. UP</div>
+                  <div id="aiConfidence" class="mt-1 text-[11px] text-slate-400">
+                    Conf: -
+                  </div>
+                </div>
+              </div>
+              <div class="mt-1 flex items-center justify-between text-[10px] text-slate-500">
+                <span>0%</span><span>50%</span><span>100%</span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3 text-[11px] pt-1 border-t border-slate-800/80 mt-2">
+                <div>
+                  <p class="text-slate-500 mb-0.5">MACD Hist</p>
+                  <p id="macdHist" class="font-mono text-sm text-slate-200">-</p>
+                </div>
+                <div>
+                  <p class="text-slate-500 mb-0.5">ATR</p>
+                  <p id="atr" class="font-mono text-sm text-slate-200">-</p>
+                </div>
+                <div class="col-span-2 flex items-center justify-between">
+                  <p class="text-slate-500">Engine</p>
+                  <span id="useLstmTag" class="pill">
+                    RULE-ONLY
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Signals + trade control row -->
+        <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.1fr)] gap-4 md:gap-6">
+          <!-- Signals / timeline -->
+          <div class="card px-4 py-4 md:px-5 md:py-5">
+            <div class="flex items-center justify-between mb-3">
+              <p class="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                Signals
+              </p>
+              <div class="flex flex-wrap items-center gap-2 text-[11px]">
+                <span id="preSignalBadge" class="pill">
+                  PRE: <span id="preSignalText">None</span>
+                </span>
+                <span id="confirmSignalBadge" class="pill">
+                  CONFIRM: <span id="confirmSignalText">None</span>
+                </span>
+              </div>
+            </div>
+
+            <div class="mt-2">
+              <p class="text-[11px] text-slate-500 mb-1.5">Recent signals</p>
+              <ul id="signalTimeline"
+                  class="space-y-1 text-[11px] max-h-40 overflow-y-auto pr-1">
+                <!-- timeline items via JS -->
+              </ul>
+            </div>
+          </div>
+
+          <!-- Trade control -->
+          <div class="card px-4 py-4 md:px-5 md:py-5">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <p class="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                  Trade Control
+                </p>
+                <p class="text-[11px] text-slate-500 mt-1">
+                  Manual / AI-assisted orders → MT5
+                </p>
+              </div>
+            </div>
+
+            <div class="space-y-4">
+              <div class="grid grid-cols-3 gap-2">
+                <button id="btnBuy" class="btn btn-primary">
+                  BUY
+                </button>
+                <button id="btnSell" class="btn btn-danger">
+                  SELL
+                </button>
+                <button id="btnAuto" class="btn btn-soft">
+                  AUTO (AI)
+                </button>
+              </div>
+              <p class="text-[11px] text-slate-500 leading-relaxed">
+                • AUTO เลือก BUY/SELL จาก AI Prob ล่าสุด<br />
+                • Volume ใช้ค่าจาก MANUAL_TRADE_VOLUME
+              </p>
+
+              <div class="border border-slate-800/85 rounded-xl px-3 py-3 bg-slate-950/80 space-y-2">
+                <div class="flex items-center justify-between">
+                  <p class="text-[11px] text-slate-400">Training LSTM</p>
+                  <button id="btnTrain" class="btn btn-soft px-3 py-1.5 text-xs">
+                    Train AI
+                  </button>
+                </div>
+                <p class="text-[11px] text-slate-500">
+                  ฝึกโมเดลจาก <span class="font-mono">logs/ai_log.jsonl</span> เมื่อเทรนสำเร็จระบบจะใช้ LSTM อัตโนมัติ
+                </p>
+                <p id="trainStatus" class="text-[11px] text-slate-400">
+                  Status: idle
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right column -->
+      <aside class="space-y-4 md:space-y-6">
+        <div class="card px-4 py-4 md:px-5 md:py-5 flex flex-col min-h-[260px]">
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+              Raw AI State
+            </p>
+            <button id="btnToggleJson"
+                    class="text-[11px] text-slate-400 hover:text-slate-100">
+              Hide
+            </button>
+          </div>
+          <pre id="rawState"
+               class="mt-2 text-[11px] leading-relaxed font-mono text-slate-300 flex-1 overflow-auto whitespace-pre-wrap">
+-
+          </pre>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    // ---- signal timeline ----
+    const signalTimeline = [];
+    const maxSignals = 20;
+
+    function pushSignal(text, type) {
+      const ts = new Date().toLocaleTimeString();
+      const label = type === "CONFIRM" ? "CONFIRM" : "PRE";
+      signalTimeline.unshift({ ts, text, label, type });
+      if (signalTimeline.length > maxSignals) signalTimeline.pop();
+      renderSignalTimeline();
+    }
+
+    function renderSignalTimeline() {
+      const ul = $("signalTimeline");
+      ul.innerHTML = "";
+      signalTimeline.forEach((s) => {
+        const li = document.createElement("li");
+        li.className = "fade-item";
+        const color =
+          s.type === "CONFIRM" ? "text-emerald-300" : "text-amber-300";
+        li.innerHTML = `
+          <span class="text-slate-500 mr-1">${s.ts}</span>
+          <span class="${color} font-semibold mr-1">${s.label}</span>
+          <span class="text-slate-200">${s.text}</span>
+        `;
+        ul.appendChild(li);
+        requestAnimationFrame(() => li.classList.add("show"));
+      });
+    }
+
+    // ---- status / gauge ----
+    function setWsStatus(online) {
+      const dot = $("wsDot");
+      const txt = $("wsStatusText");
+      if (online) {
+        dot.classList.remove("status-offline");
+        dot.classList.add("status-online");
+        txt.textContent = "Live";
+      } else {
+        dot.classList.remove("status-online");
+        dot.classList.add("status-offline");
+        txt.textContent = "Disconnected";
+      }
+    }
+
+    function updateGauge(probUp) {
+      const arc = $("gaugeArc");
+      const circ = 157;
+      const value = Math.max(0, Math.min(1, probUp ?? 0.5));
+      const offset = circ - circ * value;
+      arc.style.strokeDashoffset = offset;
+    }
+
+    // ---- main dashboard update ----
+    function updateDashboard(state) {
+      if (!state || Object.keys(state).length === 0) return;
+
+      $("loopTime").textContent = state.loop_started || "-";
+      $("symbol").textContent = state.symbol || "XAUUSD";
+      $("price").textContent =
+        state.price !== undefined ? state.price.toFixed(2) : "-";
+      $("openTrades").textContent = state.open_trades ?? 0;
+
+      $("rsi").textContent =
+        state.rsi !== undefined ? state.rsi.toFixed(2) : "-";
+      $("rsiZone").textContent = state.rsi_zone || "-";
+      $("macdHist").textContent =
+        state.macd_hist !== undefined ? state.macd_hist.toFixed(4) : "-";
+      $("atr").textContent =
+        state.atr !== undefined ? state.atr.toFixed(3) : "-";
+      $("adx").textContent =
+        state.adx !== undefined ? state.adx.toFixed(2) : "-";
+      $("regime").textContent = state.regime || "-";
+
+      const probUp = state.ai_prob_up ?? 0.5;
+      const conf = state.ai_confidence ?? 0;
+
+      $("aiProbUp").textContent = (probUp * 100).toFixed(1) + "%";
+      $("aiConfidence").textContent =
+        "Conf: " + (conf * 100).toFixed(0) + "%";
+      updateGauge(probUp);
+
+      const dir = state.ai_direction || (probUp >= 0.5 ? "UP" : "DOWN");
+      $("aiDirectionLabel").textContent =
+        dir === "UP" ? "Bias: Long" : "Bias: Short";
+
+      // price badge
+      const badge = $("priceDirectionBadge");
+      badge.textContent = dir;
+      badge.classList.remove("badge-bull", "badge-bear");
+      if (dir === "UP") {
+        badge.classList.add("badge-bull");
+      } else {
+        badge.classList.add("badge-bear");
+      }
+
+      // engine mode / LSTM
+      const useLstm = !!state.use_lstm;
+      const engineBadge = $("engineModeBadge");
+      const engineText = $("engineModeText");
+      const useLstmTag = $("useLstmTag");
+
+      if (useLstm) {
+        engineText.textContent = "LSTM";
+        useLstmTag.textContent = "LSTM + RULE";
+        engineBadge.style.backgroundColor = "var(--accent-soft)";
+        engineBadge.style.borderColor = "var(--accent-strong)";
+      } else {
+        engineText.textContent = "RULE";
+        useLstmTag.textContent = "RULE-ONLY";
+        engineBadge.style.backgroundColor = "rgba(15, 23, 42, 0.9)";
+        engineBadge.style.borderColor = "rgba(51, 65, 85, 1)";
+      }
+
+      // signals
+      const preBadge = $("preSignalBadge");
+      const preText = $("preSignalText");
+      preBadge.classList.remove("badge-pre-active");
+      if (state.pre_signal) {
+        preText.textContent = "Active";
+        preBadge.classList.add("badge-pre-active");
+        if (state.pre_timestamp) {
+          pushSignal("PRE signal", "PRE");
+        }
+      } else {
+        preText.textContent = "None";
+      }
+
+      const confBadge = $("confirmSignalBadge");
+      const confText = $("confirmSignalText");
+      confBadge.classList.remove("badge-confirm-active");
+      if (state.confirm_signal) {
+        confText.textContent = "Active";
+        confBadge.classList.add("badge-confirm-active");
+        if (state.confirm_timestamp) {
+          pushSignal("CONFIRM " + dir, "CONFIRM");
+        }
+      } else {
+        confText.textContent = "None";
+      }
+
+      $("rawState").textContent = JSON.stringify(state, null, 2);
+    }
+
+    // ---- WebSocket ----
+    let ws;
+    function connectWs() {
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+      ws.onopen = () => setWsStatus(true);
+      ws.onclose = () => {
+        setWsStatus(false);
+        setTimeout(connectWs, 2000);
+      };
+      ws.onerror = () => setWsStatus(false);
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          updateDashboard(data);
+        } catch (e) {
+          console.error("WS parse error", e);
+        }
+      };
+    }
+    connectWs();
+
+    // ---- API helper ----
+    async function postJson(url, body) {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body ?? {}),
+      });
+      return res.json();
+    }
+
+    $("btnBuy").addEventListener("click", async () => {
+      $("btnBuy").disabled = true;
+      try {
+        await postJson("/api/order", { side: "BUY" });
+      } catch (e) {
+        console.error(e);
+      } finally {
+        $("btnBuy").disabled = false;
+      }
+    });
+
+    $("btnSell").addEventListener("click", async () => {
+      $("btnSell").disabled = true;
+      try {
+        await postJson("/api/order", { side: "SELL" });
+      } catch (e) {
+        console.error(e);
+      } finally {
+        $("btnSell").disabled = false;
+      }
+    });
+
+    $("btnAuto").addEventListener("click", async () => {
+      $("btnAuto").disabled = true;
+      try {
+        await postJson("/api/order", { side: "AUTO" });
+      } catch (e) {
+        console.error(e);
+      } finally {
+        $("btnAuto").disabled = false;
+      }
+    });
+
+    $("btnTrain").addEventListener("click", async () => {
+      $("btnTrain").disabled = true;
+      $("trainStatus").textContent = "Status: training...";
+      try {
+        await postJson("/api/train_ai", {});
+        $("trainStatus").textContent = "Status: training started";
+      } catch (e) {
+        console.error(e);
+        $("trainStatus").textContent = "Status: error starting training";
+      } finally {
+        setTimeout(() => {
+          $("btnTrain").disabled = false;
+        }, 1500);
+      }
+    });
+
+    $("btnToggleJson").addEventListener("click", () => {
+      const pre = $("rawState");
+      const hidden = pre.classList.toggle("hidden");
+      $("btnToggleJson").textContent = hidden ? "Show" : "Hide";
+    });
+  </script>
+</body>
+</html>
