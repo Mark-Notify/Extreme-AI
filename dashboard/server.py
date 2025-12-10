@@ -1,9 +1,10 @@
 import asyncio
 import json
 import os
+import logging
 from typing import Any, Dict
 
-from fastapi import FastAPI, WebSocket, Request
+from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect, APIRouter
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -38,16 +39,48 @@ def load_last_state() -> Dict[str, Any]:
         return {}
 
 
+# @app.websocket("/ws")
+# async def websocket_endpoint(ws: WebSocket):
+#     await ws.accept()
+#     try:
+#         while True:
+#             state = load_last_state()
+#             await ws.send_json(state)
+#             await asyncio.sleep(settings.DASHBOARD_REFRESH_SEC)  # หรือจะเปลี่ยนเป็น settings.DASHBOARD_REFRESH_SEC ก็ได้ ถ้าไปเพิ่มใน config แล้ว
+#     except Exception:
+#         await ws.close()
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
     try:
         while True:
-            state = load_last_state()
+            state = load_last_state() or {}
             await ws.send_json(state)
-            await asyncio.sleep(2)  # หรือจะเปลี่ยนเป็น settings.DASHBOARD_REFRESH_SEC ก็ได้ ถ้าไปเพิ่มใน config แล้ว
-    except Exception:
-        await ws.close()
+            await asyncio.sleep(settings.DASHBOARD_REFRESH_SEC)
+    except WebSocketDisconnect:
+        # ฝั่ง client ปิดเอง (refresh แท็บ / ปิดหน้า) เคสปกติ ไม่ต้องถือว่าเป็น error
+        # อยาก log ก็ตามสะดวก เช่น:
+        # print("WebSocket disconnected")
+        pass
+    except asyncio.CancelledError:
+        # task ถูก cancel ตอน server shutdown / reload
+        # กลืน error ไปไม่ให้ traceback เด้ง
+        # ถ้าอยากให้ FastAPI จัดการต่อ สามารถ `raise` ต่อได้ แต่ส่วนใหญ่ไม่จำเป็น
+        # raise
+        pass
+    except Exception as e:
+        # error จริง ๆ อย่างอื่นค่อย debug ทีหลัง
+        # print(f"Unexpected WebSocket error: {e}")
+        pass
+    finally:
+        # ปิด connection แบบ best-effort (เผื่อมันปิดไปแล้วก็ไม่ต้องสนใจ error)
+        try:
+            await ws.close()
+        except Exception:
+            pass
+
 
 
 # ---------- API สำหรับปุ่ม BUY / SELL / AUTO / TRAIN ----------

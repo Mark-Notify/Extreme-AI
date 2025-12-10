@@ -1,5 +1,4 @@
 ﻿core/__pycache__
 __pycache__
 .env
-logs/ai_log.jsonl
-logs/last_state.json
+logs/*

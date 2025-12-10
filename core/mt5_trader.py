@@ -1,8 +1,7 @@
 # core/mt5_trader.py
 
 import MetaTrader5 as mt5
-
-from core.config import settings
+from .config import settings
 
 
 def init_mt5() -> bool:
@@ -23,13 +22,15 @@ def init_mt5() -> bool:
     print("[MT5] connected")
     return True
 
-
 def get_account_balance() -> float:
+    """
+    ดึง Balance ปัจจุบันจาก MT5
+    """
     info = mt5.account_info()
     if info is None:
+        # เผื่อหลุด connection จะได้ไม่ error
         return 0.0
     return float(info.balance)
-
 
 def get_open_trades_count(symbol: str | None = None) -> int:
     if symbol:

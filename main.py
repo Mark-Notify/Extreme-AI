@@ -12,9 +12,21 @@ from core.position_sizing import calculate_position_size
 from core.trade_logger import log_trade
 from core.discord_notifier import (
     notify_bot_started,
+    notify_pre_signal,
+    notify_confirm_signal,
     notify_trade,
     notify_error,
 )
+
+# เขียน log ลงไฟล์สำหรับเทรน ไม่ต้องทุก loop
+AI_LOG_INTERVAL_SEC = getattr(settings, "AI_LOG_INTERVAL_SEC", 5)
+LAST_AI_LOG_TS = 0.0
+
+# ถ้าใช้ AI Insight Panel (Rule vs LSTM + disagreement)
+STATS_AI = {
+    "total_samples": 0,
+    "disagree_samples": 0,
+}
 
 
 def classify_zone(rsi_value: float) -> str:
@@ -26,18 +38,19 @@ def classify_zone(rsi_value: float) -> str:
 
 
 def main_loop():
-    print("[ExtremeAI v4] starting...")
-    if not init_mt5():
-        print("[MAIN] MT5 init failed, exit.")
-        return
+    global LAST_AI_LOG_TS
 
+    print("[ExtremeAI v4] starting...")
+    init_mt5()
     notify_bot_started()
     engine = ExtremeAIEngine()
 
     while True:
+        # ใช้ timezone-aware datetime ป้องกัน warning
         loop_started = datetime.now(timezone.utc).isoformat()
 
         try:
+            # 1) ดึงข้อมูลราคา / OHLC
             df_raw = get_recent_ohlc(
                 settings.SYMBOL,
                 settings.TIMEFRAME,
@@ -48,15 +61,34 @@ def main_loop():
                 time.sleep(settings.LOOP_INTERVAL_SEC)
                 continue
 
+            # 2) คำนวณ Indicators
             df = add_all_indicators(df_raw)
             if df.empty:
                 print("[LOOP] indicators empty")
                 time.sleep(settings.LOOP_INTERVAL_SEC)
                 continue
 
+            # 3) คำนวณ AI (Rule + LSTM)
             ai_res = engine.compute_ai(df)
             last = df.iloc[-1]
 
+            # --- แยกค่า rule / lstm (ถ้ามี) สำหรับ AI Insight ---
+            prob_up_rule = float(ai_res.get("prob_up_rule", ai_res["prob_up"]))
+            prob_up_lstm = ai_res.get("prob_up_lstm")
+            dir_rule = ai_res.get("direction_rule")
+            dir_lstm = ai_res.get("direction_lstm")
+
+            disagree_rate = None
+            if ai_res.get("use_lstm") and dir_rule and dir_lstm:
+                STATS_AI["total_samples"] += 1
+                if dir_rule != dir_lstm:
+                    STATS_AI["disagree_samples"] += 1
+                if STATS_AI["total_samples"]:
+                    disagree_rate = (
+                        STATS_AI["disagree_samples"] / STATS_AI["total_samples"]
+                    )
+
+            # --- ค่า indicator หลัก ---
             rsi_val = float(last["RSI"])
             zone = classify_zone(rsi_val)
             macd_hist = float(last["MACD_HIST"])
@@ -64,122 +96,96 @@ def main_loop():
             atr_val = float(last["ATR"])
             adx_val = float(last["ADX"])
 
-            prob_up = ai_res["prob_up"]
-            prob_down = ai_res["prob_down"]
+            prob_up = float(ai_res["prob_up"])
+            prob_down = float(ai_res["prob_down"])
             regime = ai_res["regime"]
-            confidence = ai_res["confidence"]
+            confidence = float(ai_res["confidence"])
 
-            # PRE-SIGNAL conditions (ใช้แค่แจ้งใน dashboard / log)
+            # 4) เงื่อนไข PRE-SIGNAL
             pre = None
-            if zone in ("Oversold", "Overbought") or abs(macd_hist) > 0.2 or confidence > 0.6:
+            if (
+                zone in ("Oversold", "Overbought")
+                or abs(macd_hist) > 0.2
+                or confidence > 0.6
+            ):
                 pre = {
                     "type": "PRE",
                     "side_hint": "BUY" if prob_up > prob_down else "SELL",
                 }
 
-            # CONFIRM-SIGNAL conditions (เข้มขึ้นหน่อย)
-            confirm = None
-            confirm_side = None
-            # ใช้ threshold สูงขึ้นหน่อยให้คัดไม้เนียน ๆ
-            if prob_up > 0.70 and macd_hist > 0 and confidence > 0.6:
-                confirm = {"type": "CONFIRM", "side": "BUY"}
-                confirm_side = "BUY"
-            elif prob_down > 0.70 and macd_hist < 0 and confidence > 0.6:
-                confirm = {"type": "CONFIRM", "side": "SELL"}
-                confirm_side = "SELL"
+            # 5) เงื่อนไข CONFIRM-SIGNAL (ใช้ค่าจาก .env)
+            th_up = settings.AI_CONFIRM_PROB_UP_THRESHOLD
+            th_down = settings.AI_CONFIRM_PROB_DOWN_THRESHOLD
+            th_conf = settings.AI_CONFIRM_CONFIDENCE_THRESHOLD
+            macd_margin = getattr(settings, "AI_CONFIRM_MACD_MARGIN", 0.0)
 
-            pre_ts = loop_started if pre else None
-            confirm_ts = loop_started if confirm else None
+            confirm = None
+            # BUY: prob_up สูงพอ, MACD ไม่สวนแรงลง, confidence ถึง
+            if prob_up > th_up and macd_hist > -macd_margin and confidence > th_conf:
+                confirm = {"type": "CONFIRM", "side": "BUY"}
+            # SELL: prob_down สูงพอ, MACD ไม่สวนแรงขึ้น, confidence ถึง
+            elif prob_down > th_down and macd_hist < macd_margin and confidence > th_conf:
+                confirm = {"type": "CONFIRM", "side": "SELL"}
+
+
+            pre_ts = None
+            confirm_ts = None
 
             chart_path = None
             if pre or confirm:
+                # index ของแท่งล่าสุด
                 idx_last = len(df) - 1
                 pre_idx = idx_last if pre else None
                 confirm_idx = idx_last if confirm else None
-                # ถ้าอยากเก็บรูปไว้ดูย้อนหลัง เปิดบรรทัดนี้
+                # ถ้าอยากสร้างรูปกราฟแนบ Discord ให้เอา comment ออก
                 # chart_path = generate_signal_chart(df, pre_idx, confirm_idx)
+                _ = (pre_idx, confirm_idx)  # กัน warning unused ถ้าไม่ใช้ chart
 
-            # ========== AUTO TRADE LOGIC ==========
-            auto_trade_executed = False
-            trade_result = None
-            sl_price = None
-            tp_price = None
-            volume = None
+            # 6) PRE notify (ตอนนี้จะส่ง / ไม่ส่ง แล้วแต่คุณไปปรับ discord_notifier)
+            if pre:
+                msg = (
+                    f"Symbol: {settings.SYMBOL}\n"
+                    f"Price: {price}\n"
+                    f"AI Prob Up: {prob_up:.2%} / Down: {prob_down:.2%}\n"
+                    f"RSI: {rsi_val:.2f} ({zone})\n"
+                    f"MACD Hist: {macd_hist:.4f}\n"
+                    f"Regime: {regime}\n"
+                    f"Side Hint: {pre['side_hint']}"
+                )
+                notify_pre_signal(msg, chart_path)
+                pre_ts = loop_started
 
-            if confirm and settings.AUTO_TRADE_ENABLED and confirm_side in ("BUY", "SELL"):
-                # 1) ฟิลเตอร์ ADX → ถ้าไม่มีเทรนด์ ไม่เทรด
-                if adx_val < settings.ADX_TREND_THRESHOLD:
-                    print(f"[AUTO] skip trade: ADX {adx_val:.2f} < {settings.ADX_TREND_THRESHOLD}")
-                else:
-                    # 2) เช็กจำนวนไม้เปิดอยู่
-                    open_count = get_open_trades_count(settings.SYMBOL)
-                    if open_count >= settings.MAX_OPEN_TRADES:
-                        print(f"[AUTO] skip trade: open_trades={open_count} >= {settings.MAX_OPEN_TRADES}")
-                    else:
-                        # 3) คำนวณ lot จาก risk%
-                        balance = get_account_balance()
-                        volume = calculate_position_size(balance, atr_val)
+            # 7) CONFIRM notify + auto trade
+            if confirm:
+                msg = (
+                    f"Symbol: {settings.SYMBOL}\n"
+                    f"Price: {price}\n"
+                    f"AI Direction: {confirm['side']}\n"
+                    f"AI Prob Up: {prob_up:.2%} / Down: {prob_down:.2%}\n"
+                    f"RSI: {rsi_val:.2f} ({zone})\n"
+                    f"MACD Hist: {macd_hist:.4f}\n"
+                    f"Regime: {regime}\n"
+                    f"Confidence: {confidence:.2f}"
+                )
+                notify_confirm_signal(msg, chart_path)
+                confirm_ts = loop_started
 
-                        # 4) คำนวณ SL/TP จาก ATR
-                        sl_dist = settings.ATR_SL_MULTIPLIER * atr_val
-                        tp_dist = settings.ATR_TP_MULTIPLIER * atr_val
+                if settings.AUTO_TRADE_ENABLED:
+                    volume = settings.AUTO_TRADE_VOLUME  # ปรับใน config/.env ได้
+                    trade_result = execute_order(
+                        settings.SYMBOL,
+                        confirm["side"],
+                        volume,
+                    )
+                    # notify_trade จะเป็นตัวที่คุณให้ Discord เด้งเฉพาะตอนออกออเดอร์
+                    notify_trade(
+                        f"{confirm['side']} {volume} {settings.SYMBOL}\nResult: {trade_result}"
+                    )
 
-                        if confirm_side == "BUY":
-                            sl_price = price - sl_dist
-                            tp_price = price + tp_dist
-                        else:
-                            sl_price = price + sl_dist
-                            tp_price = price - tp_dist
+            # 8) ดึง Balance ปัจจุบันจาก MT5 (แสดงบน Dashboard)
+            account_balance = get_account_balance()
 
-                        # 5) ยิงออเดอร์
-                        trade_result = execute_order(
-                            settings.SYMBOL,
-                            confirm_side,
-                            volume,
-                            sl_price=sl_price,
-                            tp_price=tp_price,
-                        )
-                        auto_trade_executed = True
-
-                        # 6) log trade
-                        log_trade(
-                            {
-                                "symbol": settings.SYMBOL,
-                                "side": confirm_side,
-                                "price": price,
-                                "volume": volume,
-                                "sl": sl_price,
-                                "tp": tp_price,
-                                "prob_up": prob_up,
-                                "prob_down": prob_down,
-                                "confidence": confidence,
-                                "rsi": rsi_val,
-                                "zone": zone,
-                                "macd_hist": macd_hist,
-                                "atr": atr_val,
-                                "adx": adx_val,
-                                "regime": regime,
-                                "auto": True,
-                                "retcode": trade_result.get("retcode") if trade_result else None,
-                            }
-                        )
-
-                        # 7) Discord เฉพาะตอนยิงออเดอร์จริง
-                        msg = (
-                            f"AUTO {confirm_side} {settings.SYMBOL} {volume} lot\n"
-                            f"Price: {price}\n"
-                            f"SL: {sl_price} | TP: {tp_price}\n"
-                            f"AI Prob Up: {prob_up:.2%} / Down: {prob_down:.2%}\n"
-                            f"RSI: {rsi_val:.2f} ({zone})\n"
-                            f"MACD Hist: {macd_hist:.4f}\n"
-                            f"ATR: {atr_val:.3f} | ADX: {adx_val:.2f}\n"
-                            f"Regime: {regime}\n"
-                            f"Confidence: {confidence:.2f}\n"
-                            f"Result: {trade_result}"
-                        )
-                        notify_trade(msg)
-
-            # ========== AI log line (สำหรับ train LSTM) ==========
+            # 9) AI log line (สำหรับเทรน LSTM — ไม่ต้องเขียนทุก loop)
             log_record = {
                 "symbol": settings.SYMBOL,
                 "time": str(df["time"].iloc[-1]),
@@ -197,9 +203,13 @@ def main_loop():
                 "pre_signal": bool(pre),
                 "confirm_signal": bool(confirm),
             }
-            append_ai_log(log_record)
 
-            # ========== last_state สำหรับ Dashboard ==========
+            now_ts = time.time()
+            if now_ts - LAST_AI_LOG_TS >= AI_LOG_INTERVAL_SEC:
+                append_ai_log(log_record)
+                LAST_AI_LOG_TS = now_ts
+
+            # 10) last_state สำหรับ Dashboard / WebSocket (อัปเดตทุก loop = ทุก 1 วิ)
             last_state = {
                 "loop_started": loop_started,
                 "symbol": settings.SYMBOL,
@@ -214,19 +224,30 @@ def main_loop():
                 "ai_direction": ai_res["direction"],
                 "ai_confidence": confidence,
                 "regime": regime,
-                "use_lstm": ai_res["use_lstm"],
+                "use_lstm": ai_res.get("use_lstm", False),
                 "pre_signal": pre is not None,
                 "confirm_signal": confirm is not None,
                 "pre_timestamp": pre_ts,
                 "confirm_timestamp": confirm_ts,
+
+                # ถ้ายังไม่ได้ต่อกับฟังก์ชันนับไม้ ให้ปล่อย [] ไปก่อน
                 "open_trades": get_open_trades_count(settings.SYMBOL),
+
+                # ✅ Balance realtime
+                "account_balance": account_balance,
+
+                # ✅ AI Insight (Rule vs LSTM + disagreement)
+                "ai_prob_rule": prob_up_rule,
+                "ai_prob_lstm": prob_up_lstm,
+                "ai_disagree_rate": disagree_rate,
+                "ai_samples": STATS_AI["total_samples"],
+                "ai_disagree_samples": STATS_AI["disagree_samples"],
             }
             write_last_state(last_state)
 
             print(
                 f"[LOOP] {settings.SYMBOL} price={price:.2f} "
-                f"AI dir={ai_res['direction']} up={prob_up:.2%} "
-                f"conf={confidence:.2f} regime={regime} ADX={adx_val:.1f}"
+                f"AI dir={ai_res['direction']} up={prob_up:.2%} regime={regime}"
             )
 
         except KeyboardInterrupt:
@@ -236,6 +257,7 @@ def main_loop():
             print("[LOOP][ERROR]", e)
             notify_error(str(e))
 
+        # ให้ loop วิ่งตาม config (ตั้งใน .env = 1)
         time.sleep(settings.LOOP_INTERVAL_SEC)
 
 
