@@ -8,8 +8,8 @@ from core.ai_engine import ExtremeAIEngine
 from core.ai_logger import append_ai_log, write_last_state
 from core.charting import generate_signal_chart
 from core.mt5_trader import execute_order, get_account_balance, get_open_trades_count
-from core.position_sizing import calculate_position_size
-from core.trade_logger import log_trade
+from core.position_sizing import calculate_position_size  # ยังไม่ใช้ แต่เผื่ออนาคต
+from core.trade_logger import log_trade  # ยังไม่ใช้ แต่เผื่ออนาคต
 from core.discord_notifier import (
     notify_bot_started,
     notify_pre_signal,
@@ -35,6 +35,55 @@ def classify_zone(rsi_value: float) -> str:
     if rsi_value > 70:
         return "Overbought"
     return "Neutral"
+
+
+def compute_sl_tp_by_ai(
+    entry_price: float,
+    side: str,
+    atr: float,
+    regime: str,
+    confidence: float,
+) -> tuple[float, float]:
+    """
+    ให้ AI ช่วยคิด SL/TP จาก ATR + regime + confidence
+
+    side: "BUY" / "SELL"
+    return: (sl_price, tp_price)
+    """
+    # กันค่าแปลก ๆ
+    atr = max(float(atr), 0.01)
+
+    # --- base parameter ---
+    # ระยะ SL จาก ATR
+    atr_mult_sl = 1.5   # SL ≈ 1.5 * ATR
+    rr = 1.8            # TP ≈ 1.8R
+
+    # ปรับตาม regime + confidence
+    if regime == "trending" and confidence > 0.7:
+        atr_mult_sl = 1.8
+        rr = 2.3
+    elif regime == "sideways":
+        atr_mult_sl = 1.2
+        rr = 1.4
+
+    # ถ้า confidence ต่ำมาก ลด RR เพื่อเก็บสั้น
+    if confidence < 0.4:
+        rr = max(1.0, rr - 0.4)
+
+    sl_dist = atr * atr_mult_sl
+    tp_dist = sl_dist * rr
+
+    if side.upper() == "BUY":
+        sl_price = entry_price - sl_dist
+        tp_price = entry_price + tp_dist
+    else:
+        sl_price = entry_price + sl_dist
+        tp_price = entry_price - tp_dist
+
+    # กันค่าติดลบ
+    sl_price = max(sl_price, 0.01)
+    tp_price = max(tp_price, 0.01)
+    return sl_price, tp_price
 
 
 def main_loop():
@@ -113,11 +162,9 @@ def main_loop():
                     "side_hint": "BUY" if prob_up > prob_down else "SELL",
                 }
 
-            # 5) เงื่อนไข CONFIRM-SIGNAL (ใช้ค่าจาก .env)
-            th_up = settings.AI_CONFIRM_PROB_UP_THRESHOLD
-            th_down = settings.AI_CONFIRM_PROB_DOWN_THRESHOLD
-            th_conf = settings.AI_CONFIRM_CONFIDENCE_THRESHOLD
-            macd_margin = getattr(settings, "AI_CONFIRM_MACD_MARGIN", 0.0)
+
+            # 5) เงื่อนไข CONFIRM-SIGNAL (เลือกตาม AI_MODE)
+            th_up, th_down, th_conf, macd_margin = get_ai_confirm_thresholds()
 
             confirm = None
             # BUY: prob_up สูงพอ, MACD ไม่สวนแรงลง, confidence ถึง
@@ -137,11 +184,10 @@ def main_loop():
                 idx_last = len(df) - 1
                 pre_idx = idx_last if pre else None
                 confirm_idx = idx_last if confirm else None
-                # ถ้าอยากสร้างรูปกราฟแนบ Discord ให้เอา comment ออก
                 # chart_path = generate_signal_chart(df, pre_idx, confirm_idx)
                 _ = (pre_idx, confirm_idx)  # กัน warning unused ถ้าไม่ใช้ chart
 
-            # 6) PRE notify (ตอนนี้จะส่ง / ไม่ส่ง แล้วแต่คุณไปปรับ discord_notifier)
+            # 6) PRE notify
             if pre:
                 msg = (
                     f"Symbol: {settings.SYMBOL}\n"
@@ -155,7 +201,7 @@ def main_loop():
                 notify_pre_signal(msg, chart_path)
                 pre_ts = loop_started
 
-            # 7) CONFIRM notify + auto trade
+            # 7) CONFIRM notify + auto trade (พร้อม SL/TP จาก AI)
             if confirm:
                 msg = (
                     f"Symbol: {settings.SYMBOL}\n"
@@ -171,19 +217,34 @@ def main_loop():
                 confirm_ts = loop_started
 
                 if settings.AUTO_TRADE_ENABLED:
-                    volume = settings.AUTO_TRADE_VOLUME  # ปรับใน config/.env ได้
+                    volume = settings.AUTO_TRADE_VOLUME  # ปรับใน .env ได้
+
+                    # ให้ AI ช่วยคิด SL/TP
+                    sl_price, tp_price = compute_sl_tp_by_ai(
+                        entry_price=price,
+                        side=confirm["side"],
+                        atr=atr_val,
+                        regime=regime,
+                        confidence=confidence,
+                    )
+
                     trade_result = execute_order(
                         settings.SYMBOL,
                         confirm["side"],
                         volume,
+                        sl=sl_price,
+                        tp=tp_price,
                     )
-                    # notify_trade จะเป็นตัวที่คุณให้ Discord เด้งเฉพาะตอนออกออเดอร์
+
                     notify_trade(
-                        f"{confirm['side']} {volume} {settings.SYMBOL}\nResult: {trade_result}"
+                        f"{confirm['side']} {volume} {settings.SYMBOL}\n"
+                        f"SL={sl_price:.2f} TP={tp_price:.2f}\n"
+                        f"Result: {trade_result}"
                     )
 
             # 8) ดึง Balance ปัจจุบันจาก MT5 (แสดงบน Dashboard)
             account_balance = get_account_balance()
+            open_trades_count = get_open_trades_count(settings.SYMBOL)
 
             # 9) AI log line (สำหรับเทรน LSTM — ไม่ต้องเขียนทุก loop)
             log_record = {
@@ -230,8 +291,8 @@ def main_loop():
                 "pre_timestamp": pre_ts,
                 "confirm_timestamp": confirm_ts,
 
-                # ถ้ายังไม่ได้ต่อกับฟังก์ชันนับไม้ ให้ปล่อย [] ไปก่อน
-                "open_trades": get_open_trades_count(settings.SYMBOL),
+                # open trades (จำนวนไม้ของ symbol นี้)
+                "open_trades": open_trades_count,
 
                 # ✅ Balance realtime
                 "account_balance": account_balance,
@@ -259,6 +320,34 @@ def main_loop():
 
         # ให้ loop วิ่งตาม config (ตั้งใน .env = 1)
         time.sleep(settings.LOOP_INTERVAL_SEC)
+
+def get_ai_confirm_thresholds():
+    """
+    คืนค่า (th_up, th_down, th_conf, macd_margin) ตาม AI_MODE
+
+    SAFE        : ยิงน้อยมาก เน้นชัวร์
+    NORMAL      : กลาง ๆ
+    AGGRESSIVE  : ยิงบ่อยขึ้น เน้นตามตลาดเร็ว
+    """
+    mode = getattr(settings, "AI_MODE", "NORMAL").upper()
+
+    if mode == "SAFE":
+        th_up = 0.65
+        th_down = 0.65
+        th_conf = 0.60
+        macd_margin = 0.00
+    elif mode == "AGGRESSIVE":
+        th_up = 0.53
+        th_down = 0.53
+        th_conf = 0.35
+        macd_margin = 0.07
+    else:  # NORMAL
+        th_up = 0.58
+        th_down = 0.58
+        th_conf = 0.45
+        macd_margin = 0.03
+
+    return th_up, th_down, th_conf, macd_margin
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ class Settings:
     AI_CONFIRM_PROB_DOWN_THRESHOLD: float = float(os.getenv("AI_CONFIRM_PROB_DOWN_THRESHOLD", "0.65"))
     AI_CONFIRM_CONFIDENCE_THRESHOLD: float = float(os.getenv("AI_CONFIRM_CONFIDENCE_THRESHOLD", "0.60"))
     AI_CONFIRM_MACD_MARGIN: float = float(os.getenv("AI_CONFIRM_MACD_MARGIN", "0.00"))  # ใช้ดูทิศ MACD แบบหลวม/เข้ม
+    AI_MODE: str = os.getenv("AI_MODE", "NORMAL")  # 🟢 SAFE / 🟡 NORMAL / 🔴 AGGRESSIVE
 
     # Auto Trading
     AUTO_TRADE_ENABLED: bool = os.getenv("AUTO_TRADE_ENABLED", "false").lower() == "true"

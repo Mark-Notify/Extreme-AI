@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <title>Extreme AI v4 – Trading Desk</title>
@@ -10,7 +11,8 @@
 
   <style>
     :root {
-      --accent: #a3e635;          /* lime / mint */
+      --accent: #a3e635;
+      /* lime / mint */
       --accent-soft: rgba(163, 230, 53, 0.16);
       --accent-strong: #bef264;
       --accent-text: #ecfccb;
@@ -82,10 +84,12 @@
         color 0.16s ease;
       white-space: nowrap;
     }
+
     .btn:active {
       transform: translateY(1px) scale(0.99);
       box-shadow: none;
     }
+
     .btn:disabled {
       opacity: 0.55;
       cursor: default;
@@ -102,6 +106,7 @@
         0 0 18px rgba(74, 222, 128, 0.8),
         0 14px 35px rgba(15, 23, 42, 0.9);
     }
+
     .btn-primary:hover:not(:disabled) {
       background: linear-gradient(135deg, var(--accent-strong), var(--accent));
     }
@@ -115,6 +120,7 @@
         0 0 18px rgba(244, 114, 182, 0.85),
         0 14px 35px rgba(15, 23, 42, 0.9);
     }
+
     .btn-danger:hover:not(:disabled) {
       background: linear-gradient(135deg, #fb7185, #fecaca);
     }
@@ -125,6 +131,7 @@
       border-color: rgba(51, 65, 85, 0.85);
       box-shadow: 0 12px 30px rgba(15, 23, 42, 0.9);
     }
+
     .btn-soft:hover:not(:disabled) {
       background: rgba(15, 23, 42, 0.98);
       border-color: rgba(148, 163, 184, 0.65);
@@ -140,10 +147,12 @@
         box-shadow 0.16s ease,
         transform 0.16s ease;
     }
+
     .status-online {
       background: var(--accent);
       box-shadow: 0 0 0 6px rgba(163, 230, 53, 0.2);
     }
+
     .status-offline {
       background: var(--danger);
       box-shadow: 0 0 0 6px rgba(248, 113, 113, 0.2);
@@ -163,11 +172,13 @@
       letter-spacing: 0.16em;
       text-transform: uppercase;
     }
+
     .badge-bull {
       border-color: var(--accent-strong);
       color: var(--accent-text);
       box-shadow: 0 0 0 1px rgba(190, 242, 100, 0.4);
     }
+
     .badge-bear {
       border-color: var(--danger);
       color: var(--danger-text);
@@ -179,6 +190,7 @@
       border-color: rgba(234, 179, 8, 0.9);
       color: #fef3c7;
     }
+
     .badge-confirm-active {
       background: var(--accent-soft);
       border-color: var(--accent-strong);
@@ -189,6 +201,7 @@
       opacity: 0;
       transform: translateY(2px);
     }
+
     .fade-item.show {
       opacity: 1;
       transform: translateY(0);
@@ -203,26 +216,35 @@
       box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.96);
     }
 
-    body #gaugeGradient stop:nth-of-type(1) { stop-color: #4ade80; }
-    body #gaugeGradient stop:nth-of-type(2) { stop-color: #f59e0b; }
-    body #gaugeGradient stop:nth-of-type(3) { stop-color: #fb7185; }
+    body #gaugeGradient stop:nth-of-type(1) {
+      stop-color: #4ade80;
+    }
+
+    body #gaugeGradient stop:nth-of-type(2) {
+      stop-color: #f59e0b;
+    }
+
+    body #gaugeGradient stop:nth-of-type(3) {
+      stop-color: #fb7185;
+    }
   </style>
 </head>
+
 <body class="text-slate-100">
   <!-- Top bar -->
   <header class="border-b border-slate-800/80 bg-slate-950/70 backdrop-blur-xl sticky top-0 z-30">
     <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
       <div class="flex items-center gap-3">
-        <div class="h-9 w-9 rounded-2xl bg-gradient-to-br from-emerald-400/20 via-pink-500/10 to-slate-900 border border-emerald-300/40 flex items-center justify-center shadow-lg shadow-emerald-500/40">
-          <span class="text-[11px] font-semibold tracking-[0.22em] text-emerald-100">XA</span>
+        <div
+          class="h-9 w-9 rounded-2xl bg-gradient-to-br from-emerald-400/20 via-pink-500/10 to-slate-900 border border-emerald-300/40 flex items-center justify-center shadow-lg shadow-emerald-500/40">
+          <span class="text-[11px] font-semibold tracking-[0.22em] text-emerald-100">Ex</span>
         </div>
         <div>
           <div class="flex flex-wrap items-center gap-2">
             <h1 class="text-sm md:text-base font-semibold tracking-wide">
               Extreme AI v4 <span class="text-slate-400">Trading Desk</span>
             </h1>
-            <span id="engineModeBadge"
-                  class="pill">
+            <span id="engineModeBadge" class="pill">
               Engine: <span id="engineModeText">RULE</span>
             </span>
           </div>
@@ -277,8 +299,7 @@
                 <p class="text-[11px] text-slate-500 mb-1.5">Last price</p>
                 <div class="flex items-baseline gap-2">
                   <span id="price" class="text-3xl font-semibold tracking-tight">-</span>
-                  <span id="priceDirectionBadge"
-                        class="direction-badge text-[11px]">
+                  <span id="priceDirectionBadge" class="direction-badge text-[11px]">
                     -
                   </span>
                 </div>
@@ -323,24 +344,11 @@
             <div class="flex flex-col gap-3">
               <div class="relative mx-auto w-40 h-24">
                 <svg viewBox="0 0 120 70" class="w-full h-full">
-                  <path
-                    d="M10 60 A 50 50 0 0 1 110 60"
-                    fill="none"
-                    stroke="#020617"
-                    stroke-width="9"
-                    stroke-linecap="round"
-                  ></path>
-                  <path
-                    id="gaugeArc"
-                    d="M10 60 A 50 50 0 0 1 110 60"
-                    fill="none"
-                    stroke="url(#gaugeGradient)"
-                    stroke-width="9"
-                    stroke-linecap="round"
-                    stroke-dasharray="157"
-                    stroke-dashoffset="78"
-                    class="gauge-ring"
-                  ></path>
+                  <path d="M10 60 A 50 50 0 0 1 110 60" fill="none" stroke="#020617" stroke-width="9"
+                    stroke-linecap="round"></path>
+                  <path id="gaugeArc" d="M10 60 A 50 50 0 0 1 110 60" fill="none" stroke="url(#gaugeGradient)"
+                    stroke-width="9" stroke-linecap="round" stroke-dasharray="157" stroke-dashoffset="78"
+                    class="gauge-ring"></path>
                   <defs>
                     <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
                       <stop offset="0%" stop-color="#4ade80" />
@@ -401,8 +409,7 @@
 
             <div class="mt-2">
               <p class="text-[11px] text-slate-500 mb-1.5">Recent signals</p>
-              <ul id="signalTimeline"
-                  class="space-y-1 text-[11px] max-h-40 overflow-y-auto pr-1">
+              <ul id="signalTimeline" class="space-y-1 text-[11px] max-h-40 overflow-y-auto pr-1">
                 <!-- timeline items via JS -->
               </ul>
             </div>
@@ -423,14 +430,26 @@
 
             <div class="space-y-4">
               <div class="grid grid-cols-3 gap-2">
-                <button id="btnBuy" class="btn btn-primary">
+                <button id="btnBuy" class="btn btn-primary flex-1">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6">
+                    </path>
+                  </svg>
                   BUY
                 </button>
-                <button id="btnSell" class="btn btn-danger">
+                <button id="btnSell" class="btn btn-danger flex-1">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M11 17l-5-5m0 0l5-5m-5 5h12"></path>
+                  </svg>
                   SELL
                 </button>
-                <button id="btnAuto" class="btn btn-soft">
-                  AUTO (AI)
+                <button id="btnAuto" class="btn btn-soft flex-1">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                  </svg>
+                  AUTO
                 </button>
               </div>
               <p class="text-[11px] text-slate-500 leading-relaxed">
@@ -441,7 +460,7 @@
               <div class="border border-slate-800/85 rounded-xl px-3 py-3 bg-slate-950/80 space-y-2">
                 <div class="flex items-center justify-between">
                   <p class="text-[11px] text-slate-400">Training LSTM</p>
-                  <button id="btnTrain" class="btn btn-soft px-3 py-1.5 text-xs">
+                  <button id="btnTrain" class="btn btn-primary px-3 py-1.5 text-xs">
                     Train AI
                   </button>
                 </div>
@@ -464,13 +483,12 @@
             <p class="text-[11px] uppercase tracking-[0.18em] text-slate-500">
               Raw AI State
             </p>
-            <button id="btnToggleJson"
-                    class="text-[11px] text-slate-400 hover:text-slate-100">
+            <button id="btnToggleJson" class="text-[11px] text-slate-400 hover:text-slate-100">
               Hide
             </button>
           </div>
           <pre id="rawState"
-               class="mt-2 text-[11px] leading-relaxed font-mono text-slate-300 flex-1 overflow-auto whitespace-pre-wrap">
+            class="mt-2 text-[11px] leading-relaxed font-mono text-slate-300 flex-1 overflow-auto whitespace-pre-wrap">
 -
           </pre>
         </div>
@@ -714,4 +732,5 @@
     });
   </script>
 </body>
+
 </html>

@@ -9,7 +9,9 @@
   <!-- Google Font: Roboto (Material UI feeling) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&family=Prompt:wght@400;500;600&family=Roboto+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet" />
 
   <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -41,14 +43,13 @@
     }
 
     body {
-      min-height: 100vh;
-      margin: 0;
-      background:
-        radial-gradient(circle at 0% 0%, rgba(91, 60, 196, 0.16), transparent 55%),
-        radial-gradient(circle at 100% 0%, rgba(245, 180, 0, 0.16), transparent 55%),
-        linear-gradient(to bottom, #f5f5fb, #f9fafb);
-      font-family: "Roboto", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      color: var(--text-main);
+      font-family: "Rubik", "Prompt", system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+    }
+
+    .font-mono {
+      font-family: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+        Consolas, "Liberation Mono", "Courier New", monospace;
     }
 
     .card {
@@ -58,6 +59,20 @@
       box-shadow:
         0 10px 30px rgba(15, 23, 42, 0.06),
         0 1px 2px rgba(15, 23, 42, 0.03);
+    }
+
+    /* ให้ใช้ background alt ได้จริง */
+    .bg-surface-alt {
+      background: var(--surface-alt);
+    }
+
+    /* การ์ด AI Performance แบบโทนเดียวกับทั้งหน้า */
+    .card-ai-performance {
+      background:
+        radial-gradient(circle at 0 0, rgba(129, 140, 248, 0.12), transparent 55%),
+        radial-gradient(circle at 100% 0, rgba(245, 158, 11, 0.12), transparent 55%),
+        var(--surface-alt);
+      border-color: rgba(129, 140, 248, 0.4);
     }
 
     .pill {
@@ -257,6 +272,30 @@
       letter-spacing: 0.14em;
       color: var(--text-soft);
     }
+
+    @keyframes ws-blink {
+      0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.25);
+        opacity: 1;
+      }
+
+      50% {
+        transform: scale(1.12);
+        box-shadow: 0 0 0 10px rgba(34, 197, 94, 0.05);
+        opacity: 0.5;
+      }
+
+      100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.25);
+        opacity: 1;
+      }
+    }
+
+    .status-dot.blinking {
+      animation: ws-blink 1.2s ease-in-out infinite;
+    }
   </style>
 </head>
 
@@ -290,7 +329,7 @@
           <span id="loopTime" class="font-mono text-[11px] text-slate-700">-</span>
         </div>
         <div class="flex items-center gap-2">
-          <span id="wsDot" class="status-dot status-online"></span>
+          <span id="wsDot" class="status-dot status-online blinking"></span>
           <span id="wsStatusText" class="text-[11px] text-slate-600">Live</span>
         </div>
       </div>
@@ -343,7 +382,7 @@
                   <p class="text-slate-400 mb-0.5">RSI</p>
                   <p class="text-slate-800">
                     <span id="rsi">-</span>
-                    <span class="text-slate-400">(<span id="rsiZone">-</span>)</span>
+                    <span class="text-slate-400"><br>(<span id="rsiZone">-</span>)</span>
                   </p>
                 </div>
                 <div>
@@ -420,14 +459,26 @@
 
           <div class="space-y-4">
             <div class="grid grid-cols-3 gap-2">
-              <button id="btnBuy" class="btn btn-primary">
+              <button id="btnBuy" class="btn btn-primary flex-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6">
+                  </path>
+                </svg>
                 BUY
               </button>
-              <button id="btnSell" class="btn btn-danger">
+              <button id="btnSell" class="btn btn-danger flex-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 17l-5-5m0 0l5-5m-5 5h12">
+                  </path>
+                </svg>
                 SELL
               </button>
-              <button id="btnAuto" class="btn btn-soft">
-                AUTO (AI)
+              <button id="btnAuto" class="btn btn-soft flex-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z">
+                  </path>
+                </svg>
+                AUTO
               </button>
             </div>
             <p class="text-[11px] text-slate-500 leading-relaxed">
@@ -438,7 +489,8 @@
             <div class="border border-slate-200 rounded-xl px-3 py-3 bg-slate-50 space-y-2">
               <div class="flex items-center justify-between">
                 <p class="text-[11px] text-slate-500">Training LSTM</p>
-                <button id="btnTrain" class="btn btn-soft px-3 py-1.5 text-xs">
+                <button id="btnTrain"
+                  class="btn btn-primary px-4 py-2 text-sm font-semibold shadow-md hover:shadow-lg transition duration-200 ease-in-out">
                   Train AI
                 </button>
               </div>
@@ -450,6 +502,73 @@
               </p>
             </div>
           </div>
+
+          <!-- AI Performance Card -->
+          <div class="card card-ai-performance mt-4 px-4 py-4 md:px-5 md:py-5 rounded-2xl">
+            <div class="flex items-center justify-between mb-3">
+              <p class="metric-label">
+                AI Performance
+              </p>
+              <button id="btnRefreshAiStats"
+                class="text-[11px] px-3 py-1 rounded-full border bg-white/60 border-indigo-100 text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition"
+                type="button">
+                Refresh
+              </button>
+            </div>
+
+            <dl class="space-y-2 text-[11px]">
+              <div class="flex items-center justify-between">
+                <dt class="text-slate-500">Log file</dt>
+                <dd id="statLogFile" class="font-mono text-slate-800 truncate max-w-[160px]">
+                  -
+                </dd>
+              </div>
+
+              <div class="flex items-center justify-between">
+                <dt class="text-slate-500">Horizon (bars)</dt>
+                <dd id="statHorizon" class="font-mono text-slate-800">
+                  -
+                </dd>
+              </div>
+
+              <hr class="border-slate-200 my-2" />
+
+              <div class="flex items-center justify-between">
+                <dt class="text-slate-500">Samples (all)</dt>
+                <dd id="statSamplesAll" class="font-mono text-slate-800">
+                  -
+                </dd>
+              </div>
+              <div class="flex items-center justify-between">
+                <dt class="text-slate-500">Acc (all)</dt>
+                <dd id="statAccAll" class="font-mono text-emerald-600">
+                  -
+                </dd>
+              </div>
+
+              <hr class="border-slate-200 my-2" />
+
+              <div class="flex items-center justify-between">
+                <dt class="text-slate-500">Samples (confirm)</dt>
+                <dd id="statSamplesConfirm" class="font-mono text-slate-800">
+                  -
+                </dd>
+              </div>
+              <div class="flex items-center justify-between">
+                <dt class="text-slate-500">Winrate (confirm)</dt>
+                <dd id="statWinConfirm" class="font-mono text-emerald-600">
+                  -
+                </dd>
+              </div>
+              <div class="flex items-center justify-between">
+                <dt class="text-slate-500">Avg PnL (confirm)</dt>
+                <dd id="statPnlConfirm" class="font-mono text-sky-600">
+                  -
+                </dd>
+              </div>
+            </dl>
+          </div>
+
         </div>
       </section>
 
@@ -492,8 +611,9 @@
             </div>
           </div>
 
-          <!-- Signals block -->
-          <!-- <div class="mt-5 border-t border-slate-200 pt-3">
+          <!-- Signals block (ปิดไว้ก่อน) -->
+          <!--
+          <div class="mt-5 border-t border-slate-200 pt-3">
             <div class="flex items-center justify-between mb-2">
               <p class="metric-label">Signals</p>
               <div class="flex flex-wrap items-center gap-2 text-[11px]">
@@ -511,7 +631,8 @@
             <ul id="signalTimeline"
               class="space-y-1 text-[11px] max-h-32 overflow-y-auto pr-1">
             </ul>
-          </div> -->
+          </div>
+          -->
         </div>
 
         <!-- Raw JSON -->
@@ -522,7 +643,8 @@
               Hide
             </button>
           </div>
-          <pre id="rawState" class="mt-2 text-[11px] leading-relaxed font-mono flex-1 overflow-auto whitespace-pre-wrap">-</pre>
+          <pre id="rawState"
+            class="mt-2 text-[11px] leading-relaxed font-mono flex-1 overflow-auto whitespace-pre-wrap">-</pre>
         </div>
       </aside>
     </div>
@@ -568,12 +690,13 @@
       const dot = $("wsDot");
       const txt = $("wsStatusText");
       if (!dot || !txt) return;
+
       if (online) {
         dot.classList.remove("status-offline");
-        dot.classList.add("status-online");
+        dot.classList.add("status-online", "blinking");
         txt.textContent = "Live";
       } else {
-        dot.classList.remove("status-online");
+        dot.classList.remove("status-online", "blinking");
         dot.classList.add("status-offline");
         txt.textContent = "Disconnected";
       }
@@ -813,6 +936,64 @@
       const hidden = pre.classList.toggle("hidden");
       $("btnToggleJson").textContent = hidden ? "Show" : "Hide";
     });
+
+    async function refreshAiStats() {
+      try {
+        const res = await fetch("/api/eval_ai");
+        const data = await res.json();
+        if (!data.ok) {
+          console.warn("AI eval error:", data.error);
+          if ($("statLogFile")) $("statLogFile").textContent = "no data";
+          return;
+        }
+
+        const logFile = data.log_file;
+        const horizon = data.horizon_bars;
+        const all = data.all || {};
+        const cf = data.confirm || {};
+
+        const dateStr = logFile.replace("ai_log_", "").replace(".jsonl", "");
+        const logFileName = new Date(dateStr).toLocaleDateString();
+        if ($("statLogFile")) $("statLogFile").textContent = logFileName || "-";
+        if ($("statHorizon")) $("statHorizon").textContent = horizon ?? "-";
+
+        if ($("statSamplesAll"))
+          $("statSamplesAll").textContent = all.samples ?? "-";
+        if ($("statAccAll")) {
+          const acc = all.direction_acc;
+          $("statAccAll").textContent =
+            acc != null ? (acc * 100).toFixed(2) + "%" : "-";
+        }
+
+        if ($("statSamplesConfirm"))
+          $("statSamplesConfirm").textContent = cf.samples ?? "-";
+        if ($("statWinConfirm")) {
+          const win = cf.winrate;
+          $("statWinConfirm").textContent =
+            win != null ? (win * 100).toFixed(2) + "%" : "-";
+        }
+        if ($("statPnlConfirm")) {
+          const pnl = cf.avg_pnl;
+          $("statPnlConfirm").textContent =
+            pnl != null ? (pnl * 10000).toFixed(2) + " pts" : "-";
+        }
+      } catch (e) {
+        console.error("refreshAiStats error:", e);
+      }
+    }
+
+    // bind ปุ่ม
+    window.addEventListener("load", () => {
+      const btn = document.getElementById("btnRefreshAiStats");
+      if (btn) {
+        btn.addEventListener("click", () => {
+          refreshAiStats();
+        });
+      }
+      // โหลดครั้งแรกอัตโนมัติ
+      refreshAiStats();
+    });
+
   </script>
 </body>
 
