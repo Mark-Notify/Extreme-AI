@@ -1,7 +1,8 @@
 import glob
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 import pandas as pd
 
@@ -10,9 +11,11 @@ from core.indicators import add_all_indicators
 from core.lstm_model import ExtremeLSTM
 
 
-def load_recent_ai_logs(days: int = 3) -> pd.DataFrame:
+def load_ai_logs(days: Optional[int] = None) -> pd.DataFrame:
     """
-    อ่าน log หลายไฟล์ล่าสุด เช่น ai_log_YYYY-MM-DD.jsonl ในช่วง N วันหลัง
+    อ่าน log หลายไฟล์:
+    - ถ้า days เป็น None จะโหลดไฟล์ jsonl ทั้งหมดที่มี
+    - ถ้าเป็นจำนวนเต็ม จะเลือกไฟล์ในช่วง N วันล่าสุด
     """
     base_dir = os.path.dirname(settings.AI_LOG_PATH) or "logs"
     pattern = os.path.join(base_dir, "ai_log_*.jsonl")
@@ -20,23 +23,27 @@ def load_recent_ai_logs(days: int = 3) -> pd.DataFrame:
     if not files:
         raise FileNotFoundError(pattern)
 
-    cutoff = datetime.utcnow().date() - timedelta(days=days - 1)
-    selected = []
+    if days is None:
+        # ใช้ไฟล์ทั้งหมด (เรียงตามชื่อ/วันที่)
+        selected = files
+    else:
+        cutoff = datetime.now(timezone.utc).date() - timedelta(days=days - 1)
+        selected = []
 
-    # ไล่จากไฟล์ใหม่ไปเก่า
-    for path in reversed(files):
-        name = os.path.basename(path)  # ai_log_YYYY-MM-DD.jsonl
-        try:
-            date_str = name.replace("ai_log_", "").replace(".jsonl", "")
-            d = datetime.strptime(date_str, "%Y-%m-%d").date()
-        except Exception:
-            continue
-        if d >= cutoff:
-            selected.append(path)
+        # ไล่จากไฟล์ใหม่ไปเก่า
+        for path in reversed(files):
+            name = os.path.basename(path)  # ai_log_YYYY-MM-DD.jsonl
+            try:
+                date_str = name.replace("ai_log_", "").replace(".jsonl", "")
+                d = datetime.strptime(date_str, "%Y-%m-%d").date()
+            except Exception:
+                continue
+            if d >= cutoff:
+                selected.append(path)
 
-    # ถ้าไม่มีไฟล์ในช่วง N วัน ให้ fallback เป็นไฟล์ล่าสุดไฟล์เดียว
-    if not selected:
-        selected = [files[-1]]
+        # ถ้าไม่มีไฟล์ในช่วง N วัน ให้ fallback เป็นไฟล์ล่าสุดไฟล์เดียว
+        if not selected:
+            selected = [files[-1]]
 
     rows = []
     for path in selected:
@@ -64,10 +71,10 @@ def load_recent_ai_logs(days: int = 3) -> pd.DataFrame:
 
 def main():
     base_dir = os.path.dirname(settings.AI_LOG_PATH) or "logs"
-    print("[TRAIN_AI] loading recent logs from", base_dir)
+    print("[TRAIN_AI] loading all available logs from", base_dir)
 
     try:
-        df_log = load_recent_ai_logs(days=3)
+        df_log = load_ai_logs(days=None)
     except FileNotFoundError as e:
         print("[TRAIN_AI] no log files found:", e)
         return
@@ -99,7 +106,7 @@ def main():
 
     # บันทึก meta สำหรับ Dashboard (เวลาที่ train ล่าสุด ฯลฯ)
     meta = {
-        "last_train_time": datetime.utcnow().isoformat() + "Z",
+        "last_train_time": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         "samples": int(len(df_ind)),
         "epochs": 5,
     }

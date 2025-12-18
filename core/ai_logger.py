@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from .config import settings
@@ -15,7 +15,7 @@ def get_daily_log_path() -> str:
     """
     สร้าง path สำหรับไฟล์ log ประจำวัน เช่น logs/ai_log_2025-12-09.jsonl
     """
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     filename = f"ai_log_{today}.jsonl"
     return os.path.join(BASE_AI_LOG_DIR, filename)
 
