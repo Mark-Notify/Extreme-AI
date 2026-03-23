@@ -41,18 +41,12 @@ class ExtremeAIEngine:
             raw_prob_up = float(prob_up_rb)
 
         # ========== ขยายความต่างจาก 0.5 ให้ชัดขึ้น ==========
-        # เดิม: prob มักจะลอยแถว ๆ 0.5 → ดูแล้วไม่มั่นใจ
-        # เราจะทำแบบนี้:
-        #   delta = raw_prob_up - 0.5
-        #   amplified_delta = delta * 3.0
-        #   prob_up = 0.5 + amplified_delta
-        # แล้วค่อย clamp ให้อยู่ใน [0.05, 0.95]
-        # ผลคือ:
-        #   - ถ้า raw_prob_up 0.52 → กลายเป็น ~0.56
-        #   - ถ้า raw_prob_up 0.60 → กลายเป็น ~0.80
-        #   - ถ้า raw_prob_up 0.40 → กลายเป็น ~0.20
+        # delta = raw_prob_up - 0.5
+        # amplified_delta = delta * factor  (ปรับได้ใน .env ผ่าน AI_AMPLIFY_FACTOR)
+        # prob_up = 0.5 + amplified_delta แล้วค่อย clamp ให้อยู่ใน [0.05, 0.95]
+        amplify_factor = float(getattr(settings, "AI_AMPLIFY_FACTOR", 3.0))
         delta = raw_prob_up - 0.5
-        amplified_delta = delta * 3.0  # อยากแรงกว่านี้ก็เพิ่ม factor ได้ เช่น 4.0
+        amplified_delta = delta * amplify_factor
         prob_up = 0.5 + amplified_delta
 
         # กันสุดขอบไม่ให้สุดโต่งเกินไป
@@ -66,6 +60,12 @@ class ExtremeAIEngine:
         ai_dir = "UP" if prob_up > 0.5 else "DOWN"
         ai_conf = abs(prob_up - 0.5) * 2.0  # map 0.5 → 0, 0/1 → 1
 
+        # direction ของแต่ละ model แยกกัน (สำหรับ AI Insight disagreement)
+        direction_rule = "UP" if prob_up_rb > 0.5 else "DOWN"
+        direction_lstm: Optional[str] = None
+        if prob_up_lstm is not None:
+            direction_lstm = "UP" if float(prob_up_lstm) > 0.5 else "DOWN"
+
         return {
             "prob_up": float(prob_up),
             "prob_down": float(prob_down),
@@ -76,4 +76,8 @@ class ExtremeAIEngine:
             "use_lstm": self.lstm_enabled and prob_up_lstm is not None,
             "prob_up_lstm": float(prob_up_lstm) if prob_up_lstm is not None else None,
             "raw_prob_up": float(raw_prob_up),  # ไว้ debug ดูค่าก่อนขยาย
+            # AI Insight: direction จากแต่ละ model
+            "prob_up_rule": float(prob_up_rb),
+            "direction_rule": direction_rule,
+            "direction_lstm": direction_lstm,
         }

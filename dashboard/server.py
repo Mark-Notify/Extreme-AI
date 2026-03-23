@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import glob
 import logging
 import numpy as np
 import pandas as pd
@@ -16,51 +17,11 @@ from core.config import settings
 from core.data_feed import init_mt5
 from core.mt5_trader import execute_order
 from core.discord_notifier import notify_trade
+from core.trade_utils import compute_sl_tp_by_ai
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="dashboard/static"), name="static")
 templates = Jinja2Templates(directory="dashboard/templates")
-
-
-def compute_sl_tp_by_ai(
-    entry_price: float,
-    side: str,
-    atr: float,
-    regime: str,
-    confidence: float,
-) -> tuple[float, float]:
-    """
-    ฟังก์ชันเดียวกับใน main.py (copy logic มา)
-    """
-    atr = max(float(atr), 0.01)
-
-    atr_mult_sl = 1.5
-    rr = 1.8
-
-    if regime == "trending" and confidence > 0.7:
-        atr_mult_sl = 1.8
-        rr = 2.3
-    elif regime == "sideways":
-        atr_mult_sl = 1.2
-        rr = 1.4
-
-    if confidence < 0.4:
-        rr = max(1.0, rr - 0.4)
-
-    sl_dist = atr * atr_mult_sl
-    tp_dist = sl_dist * rr
-
-    side = side.upper()
-    if side == "BUY":
-        sl_price = entry_price - sl_dist
-        tp_price = entry_price + tp_dist
-    else:
-        sl_price = entry_price + sl_dist
-        tp_price = entry_price - tp_dist
-
-    sl_price = max(sl_price, 0.01)
-    tp_price = max(tp_price, 0.01)
-    return sl_price, tp_price
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -311,7 +272,6 @@ def _eval_ai_core(df: pd.DataFrame, horizon: int = 5, only_confirm: bool = False
         "avg_loss": avg_loss_val,
     }
 
-import glob  # อยู่ล่างสุดกันวง import ซ้อน
 @app.get("/api/eval_ai")
 async def api_eval_ai(horizon: int = 5):
     """

@@ -8,8 +8,10 @@ from core.ai_engine import ExtremeAIEngine
 from core.ai_logger import append_ai_log, write_last_state
 from core.charting import generate_signal_chart
 from core.mt5_trader import execute_order, get_account_balance, get_open_trades_count
-from core.position_sizing import calculate_position_size  # ยังไม่ใช้ แต่เผื่ออนาคต
+from core.position_sizing import calculate_position_size
 from core.trade_logger import log_trade  # ยังไม่ใช้ แต่เผื่ออนาคต
+from core.trade_utils import compute_sl_tp_by_ai
+from core.llm_advisor import LLMAdvisor
 from core.discord_notifier import (
     notify_bot_started,
     notify_pre_signal,
@@ -37,55 +39,6 @@ def classify_zone(rsi_value: float) -> str:
     return "Neutral"
 
 
-def compute_sl_tp_by_ai(
-    entry_price: float,
-    side: str,
-    atr: float,
-    regime: str,
-    confidence: float,
-) -> tuple[float, float]:
-    """
-    ให้ AI ช่วยคิด SL/TP จาก ATR + regime + confidence
-
-    side: "BUY" / "SELL"
-    return: (sl_price, tp_price)
-    """
-    # กันค่าแปลก ๆ
-    atr = max(float(atr), 0.01)
-
-    # --- base parameter ---
-    # ระยะ SL จาก ATR
-    atr_mult_sl = 1.5   # SL ≈ 1.5 * ATR
-    rr = 1.8            # TP ≈ 1.8R
-
-    # ปรับตาม regime + confidence
-    if regime == "trending" and confidence > 0.7:
-        atr_mult_sl = 1.8
-        rr = 2.3
-    elif regime == "sideways":
-        atr_mult_sl = 1.2
-        rr = 1.4
-
-    # ถ้า confidence ต่ำมาก ลด RR เพื่อเก็บสั้น
-    if confidence < 0.4:
-        rr = max(1.0, rr - 0.4)
-
-    sl_dist = atr * atr_mult_sl
-    tp_dist = sl_dist * rr
-
-    if side.upper() == "BUY":
-        sl_price = entry_price - sl_dist
-        tp_price = entry_price + tp_dist
-    else:
-        sl_price = entry_price + sl_dist
-        tp_price = entry_price - tp_dist
-
-    # กันค่าติดลบ
-    sl_price = max(sl_price, 0.01)
-    tp_price = max(tp_price, 0.01)
-    return sl_price, tp_price
-
-
 def main_loop():
     global LAST_AI_LOG_TS
 
@@ -93,6 +46,7 @@ def main_loop():
     init_mt5()
     notify_bot_started()
     engine = ExtremeAIEngine()
+    llm_advisor = LLMAdvisor()
 
     while True:
         # ใช้ timezone-aware datetime ป้องกัน warning
@@ -162,7 +116,6 @@ def main_loop():
                     "side_hint": "BUY" if prob_up > prob_down else "SELL",
                 }
 
-
             # 5) เงื่อนไข CONFIRM-SIGNAL (เลือกตาม AI_MODE)
             th_up, th_down, th_conf, macd_margin = get_ai_confirm_thresholds()
 
@@ -174,18 +127,19 @@ def main_loop():
             elif prob_down > th_down and macd_hist < macd_margin and confidence > th_conf:
                 confirm = {"type": "CONFIRM", "side": "SELL"}
 
-
             pre_ts = None
             confirm_ts = None
 
+            # 5b) สร้างกราฟสัญญาณ (ถ้ามี PRE หรือ CONFIRM)
             chart_path = None
             if pre or confirm:
-                # index ของแท่งล่าสุด
                 idx_last = len(df) - 1
                 pre_idx = idx_last if pre else None
                 confirm_idx = idx_last if confirm else None
-                # chart_path = generate_signal_chart(df, pre_idx, confirm_idx)
-                _ = (pre_idx, confirm_idx)  # กัน warning unused ถ้าไม่ใช้ chart
+                try:
+                    chart_path = generate_signal_chart(df, pre_idx, confirm_idx)
+                except Exception:
+                    chart_path = None
 
             # 6) PRE notify
             if pre:
@@ -202,6 +156,7 @@ def main_loop():
                 pre_ts = loop_started
 
             # 7) CONFIRM notify + auto trade (พร้อม SL/TP จาก AI)
+            llm_result: dict = {}
             if confirm:
                 msg = (
                     f"Symbol: {settings.SYMBOL}\n"
@@ -213,34 +168,78 @@ def main_loop():
                     f"Regime: {regime}\n"
                     f"Confidence: {confidence:.2f}"
                 )
-                notify_confirm_signal(msg, chart_path)
-                confirm_ts = loop_started
 
-                if settings.AUTO_TRADE_ENABLED:
-                    volume = settings.AUTO_TRADE_VOLUME  # ปรับใน .env ได้
+                # 7a) LLM confirmation (GPT + Gemini)
+                market_snapshot = {
+                    "symbol": settings.SYMBOL,
+                    "price": price,
+                    "rsi": rsi_val,
+                    "rsi_zone": zone,
+                    "macd_hist": macd_hist,
+                    "atr": atr_val,
+                    "adx": adx_val,
+                    "regime": regime,
+                    "ai_prob_up": prob_up,
+                    "ai_prob_down": prob_down,
+                    "ai_confidence": confidence,
+                    "ai_direction": ai_res["direction"],
+                }
+                llm_result = llm_advisor.analyze_signal(market_snapshot, confirm["side"])
 
-                    # ให้ AI ช่วยคิด SL/TP
-                    sl_price, tp_price = compute_sl_tp_by_ai(
-                        entry_price=price,
-                        side=confirm["side"],
-                        atr=atr_val,
-                        regime=regime,
-                        confidence=confidence,
+                # ถ้าเปิด LLM_REQUIRE_CONSENSUS → ต้องให้ LLM เห็นด้วยถึงจะส่ง notify
+                llm_blocks = (
+                    settings.LLM_REQUIRE_CONSENSUS
+                    and settings.LLM_ADVISOR_ENABLED
+                    and not llm_result.get("llm_agrees", True)
+                )
+                if not llm_blocks:
+                    notify_confirm_signal(msg, chart_path)
+                    confirm_ts = loop_started
+                else:
+                    print(
+                        f"[LLM] BLOCKED trade {confirm['side']} — "
+                        f"LLM consensus={llm_result.get('consensus')} "
+                        f"(conf={llm_result.get('consensus_confidence', 0):.2f})"
                     )
 
-                    trade_result = execute_order(
-                        settings.SYMBOL,
-                        confirm["side"],
-                        volume,
-                        sl=sl_price,
-                        tp=tp_price,
-                    )
+                if settings.AUTO_TRADE_ENABLED and not llm_blocks:
+                    # 7b) ตรวจ MAX_OPEN_TRADES ก่อนเปิดไม้ใหม่
+                    open_count = get_open_trades_count(settings.SYMBOL)
+                    if open_count >= settings.MAX_OPEN_TRADES:
+                        print(
+                            f"[LOOP] MAX_OPEN_TRADES reached ({open_count}/{settings.MAX_OPEN_TRADES}), skipping"
+                        )
+                    else:
+                        # 7c) Dynamic position sizing ตาม account balance + ATR
+                        account_balance = get_account_balance()
+                        volume = calculate_position_size(
+                            balance=account_balance,
+                            atr=atr_val,
+                            risk_percent=settings.RISK_PER_TRADE,
+                        )
 
-                    notify_trade(
-                        f"{confirm['side']} {volume} {settings.SYMBOL}\n"
-                        f"SL={sl_price:.2f} TP={tp_price:.2f}\n"
-                        f"Result: {trade_result}"
-                    )
+                        # 7d) ให้ AI ช่วยคิด SL/TP
+                        sl_price, tp_price = compute_sl_tp_by_ai(
+                            entry_price=price,
+                            side=confirm["side"],
+                            atr=atr_val,
+                            regime=regime,
+                            confidence=confidence,
+                        )
+
+                        trade_result = execute_order(
+                            settings.SYMBOL,
+                            confirm["side"],
+                            volume,
+                            sl=sl_price,
+                            tp=tp_price,
+                        )
+
+                        notify_trade(
+                            f"{confirm['side']} {volume} {settings.SYMBOL}\n"
+                            f"SL={sl_price:.2f} TP={tp_price:.2f}\n"
+                            f"Result: {trade_result}"
+                        )
 
             # 8) ดึง Balance ปัจจุบันจาก MT5 (แสดงบน Dashboard)
             account_balance = get_account_balance()
@@ -270,7 +269,7 @@ def main_loop():
                 append_ai_log(log_record)
                 LAST_AI_LOG_TS = now_ts
 
-            # 10) last_state สำหรับ Dashboard / WebSocket (อัปเดตทุก loop = ทุก 1 วิ)
+            # 10) last_state สำหรับ Dashboard / WebSocket (อัปเดตทุก loop)
             last_state = {
                 "loop_started": loop_started,
                 "symbol": settings.SYMBOL,
@@ -290,19 +289,22 @@ def main_loop():
                 "confirm_signal": confirm is not None,
                 "pre_timestamp": pre_ts,
                 "confirm_timestamp": confirm_ts,
-
-                # open trades (จำนวนไม้ของ symbol นี้)
                 "open_trades": open_trades_count,
-
-                # ✅ Balance realtime
                 "account_balance": account_balance,
-
-                # ✅ AI Insight (Rule vs LSTM + disagreement)
+                # AI Insight (Rule vs LSTM + disagreement)
                 "ai_prob_rule": prob_up_rule,
                 "ai_prob_lstm": prob_up_lstm,
                 "ai_disagree_rate": disagree_rate,
                 "ai_samples": STATS_AI["total_samples"],
                 "ai_disagree_samples": STATS_AI["disagree_samples"],
+                # LLM Advisor output (latest CONFIRM signal)
+                "llm_consensus": llm_result.get("consensus"),
+                "llm_consensus_confidence": llm_result.get("consensus_confidence"),
+                "llm_agrees": llm_result.get("llm_agrees"),
+                "llm_gpt_rec": llm_result.get("gpt_recommendation"),
+                "llm_gpt_reasoning": llm_result.get("gpt_reasoning"),
+                "llm_gemini_rec": llm_result.get("gemini_recommendation"),
+                "llm_gemini_reasoning": llm_result.get("gemini_reasoning"),
             }
             write_last_state(last_state)
 
