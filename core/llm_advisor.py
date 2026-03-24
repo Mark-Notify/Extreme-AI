@@ -10,6 +10,7 @@ with the technical AI will be executed, adding a high-quality filter.
 
 import json
 import re
+import time
 from typing import Optional
 
 from .config import settings
@@ -20,11 +21,17 @@ from .config import settings
 # ---------------------------------------------------------------------------
 
 _SYSTEM_PROMPT = (
-    "You are an expert quantitative trader specializing in XAUUSD (Gold) scalping. "
-    "Analyze the provided market data and give a concise trading recommendation. "
+    "You are an elite quantitative trader and risk manager specializing in XAUUSD (Gold) scalping on M1/M5 timeframes. "
+    "You combine technical analysis, market microstructure knowledge, and risk management to make precise trading decisions. "
+    "Analyze all provided market data holistically, paying special attention to: "
+    "1) Trend alignment across EMA9/EMA21/EMA50, "
+    "2) Momentum via RSI, MACD histogram, and Stochastic, "
+    "3) Volatility via ATR and Bollinger Bands, "
+    "4) Volume confirmation, "
+    "5) Market regime (trending/sideways/reversal/volatile). "
     "Respond ONLY with a JSON object containing these exact keys: "
-    '{"recommendation": "BUY" | "SELL" | "HOLD", "confidence": <0.0-1.0>, "reasoning": "<1-2 sentences>"}. '
-    "Do not include any other text."
+    '{"recommendation": "BUY" | "SELL" | "HOLD", "confidence": <0.0-1.0>, "reasoning": "<1-2 sentences>", "risk_note": "<brief risk warning if any>"}. '
+    "Do not include any other text outside the JSON."
 )
 
 
@@ -43,20 +50,48 @@ def _build_market_prompt(market_data: dict) -> str:
     ai_direction = market_data.get("ai_direction", "")
     confirm_side = market_data.get("confirm_side", "")
 
+    # Enhanced context fields
+    ema_trend = market_data.get("ema_trend", 0)
+    bb_pct_b = market_data.get("bb_pct_b", 0.5)
+    bb_width = market_data.get("bb_width", 0)
+    stoch_k = market_data.get("stoch_k", 50)
+    vol_ratio = market_data.get("vol_ratio", 1.0)
+    rule_reasons = market_data.get("rule_reasons", [])
+
+    ema_desc = {2: "Fully Bullish (9>21>50)", 1: "Partially Bullish", 0: "Neutral",
+                -1: "Partially Bearish", -2: "Fully Bearish (9<21<50)"}.get(int(ema_trend), "Neutral")
+
+    bb_pos = "Near Lower Band" if bb_pct_b < 0.2 else ("Near Upper Band" if bb_pct_b > 0.8 else "Middle")
+    vol_desc = f"{'High' if vol_ratio > 1.5 else 'Normal'} (x{vol_ratio:.1f} avg)"
+
+    reasons_str = ", ".join(rule_reasons[:5]) if rule_reasons else "None"
+
     return (
-        f"Symbol: {symbol}\n"
-        f"Current Price: {price:.2f}\n"
-        f"RSI: {rsi:.2f} ({rsi_zone})\n"
+        f"=== MARKET SNAPSHOT: {symbol} ===\n"
+        f"Current Price: {price:.2f}\n\n"
+        f"--- MOMENTUM INDICATORS ---\n"
+        f"RSI(14): {rsi:.1f} [{rsi_zone}]\n"
         f"MACD Histogram: {macd_hist:.4f}\n"
-        f"ATR: {atr:.4f}\n"
-        f"ADX: {adx:.2f}\n"
-        f"Market Regime: {regime}\n"
-        f"Technical AI Probability UP: {ai_prob_up:.2%}\n"
-        f"Technical AI Probability DOWN: {ai_prob_down:.2%}\n"
-        f"Technical AI Confidence: {ai_confidence:.2%}\n"
+        f"Stochastic %K: {stoch_k:.1f}\n\n"
+        f"--- TREND INDICATORS ---\n"
+        f"EMA Alignment: {ema_desc} (score={int(ema_trend)})\n"
+        f"ADX(14): {adx:.1f} ({'Strong' if adx > 25 else 'Weak'} trend)\n"
+        f"Market Regime: {regime}\n\n"
+        f"--- VOLATILITY ---\n"
+        f"ATR(14): {atr:.4f}\n"
+        f"Bollinger Band Position: {bb_pos} (%B={bb_pct_b:.2f})\n"
+        f"BB Width: {bb_width:.4f}\n\n"
+        f"--- VOLUME ---\n"
+        f"Volume vs Average: {vol_desc}\n\n"
+        f"--- AI ANALYSIS ---\n"
+        f"Technical AI Probability UP: {ai_prob_up:.1%}\n"
+        f"Technical AI Probability DOWN: {ai_prob_down:.1%}\n"
+        f"Technical AI Confidence: {ai_confidence:.1%}\n"
         f"Technical AI Direction: {ai_direction}\n"
-        f"Proposed Trade Side: {confirm_side}\n\n"
-        "Based on this data, should we execute the proposed trade?"
+        f"Key Signals: {reasons_str}\n\n"
+        f"=== PROPOSED TRADE: {confirm_side} ===\n"
+        "Should we execute this trade? Consider risk/reward carefully.\n"
+        "Recommend BUY/SELL only if high confidence. Recommend HOLD to skip if risk is elevated."
     )
 
 
@@ -67,13 +102,13 @@ def _build_market_prompt(market_data: dict) -> str:
 def _parse_llm_response(text: str) -> dict:
     """Extract JSON from model response, tolerating extra wrapping text."""
     text = text.strip()
-    # Try direct parse
+    # Try direct parse first
     try:
         return json.loads(text)
     except Exception:
         pass
-    # Try extracting first JSON object
-    match = re.search(r"\{.*?\}", text, re.DOTALL)
+    # Try extracting a JSON object (greedy, handles nested braces)
+    match = re.search(r"\{.*\}", text, re.DOTALL)
     if match:
         try:
             return json.loads(match.group())
@@ -101,8 +136,9 @@ def _query_gpt(prompt: str) -> dict:
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.1,
-            max_tokens=200,
+            temperature=0.05,   # ต่ำมากเพื่อให้ consistent
+            max_tokens=300,
+            response_format={"type": "json_object"},  # force JSON output
         )
         content = response.choices[0].message.content or ""
         parsed = _parse_llm_response(content)
@@ -110,6 +146,7 @@ def _query_gpt(prompt: str) -> dict:
             "recommendation": parsed.get("recommendation", "HOLD"),
             "confidence": float(parsed.get("confidence", 0.5)),
             "reasoning": parsed.get("reasoning", content[:200]),
+            "risk_note": parsed.get("risk_note", ""),
         }
     except Exception as e:
         return {"error": str(e), "recommendation": "HOLD", "confidence": 0.0, "reasoning": ""}
@@ -134,7 +171,11 @@ def _query_gemini(prompt: str) -> dict:
         )
         response = model.generate_content(
             prompt,
-            generation_config={"temperature": 0.1, "max_output_tokens": 200},
+            generation_config={
+                "temperature": 0.05,
+                "max_output_tokens": 300,
+                "response_mime_type": "application/json",
+            },
         )
         content = response.text or ""
         parsed = _parse_llm_response(content)
@@ -142,6 +183,7 @@ def _query_gemini(prompt: str) -> dict:
             "recommendation": parsed.get("recommendation", "HOLD"),
             "confidence": float(parsed.get("confidence", 0.5)),
             "reasoning": parsed.get("reasoning", content[:200]),
+            "risk_note": parsed.get("risk_note", ""),
         }
     except Exception as e:
         return {"error": str(e), "recommendation": "HOLD", "confidence": 0.0, "reasoning": ""}
@@ -184,7 +226,9 @@ class LLMAdvisor:
         Analyze market data with available LLMs and derive consensus.
 
         Args:
-            market_data: dict with price, rsi, macd_hist, atr, adx, regime, etc.
+            market_data: dict with price, rsi, macd_hist, atr, adx, regime,
+                         ema_trend, bb_pct_b, bb_width, stoch_k, vol_ratio,
+                         rule_reasons, etc.
             confirm_side: "BUY" or "SELL" — the trade the technical AI wants to execute
 
         Returns:
@@ -205,6 +249,7 @@ class LLMAdvisor:
             result["gpt_recommendation"] = gpt_rec
             result["gpt_confidence"] = gpt_conf
             result["gpt_reasoning"] = gpt_out.get("reasoning", "")
+            result["gpt_risk_note"] = gpt_out.get("risk_note", "")
             if "error" in gpt_out:
                 result["gpt_error"] = gpt_out["error"]
                 print(f"[LLM][GPT] error: {gpt_out['error']}")
@@ -221,6 +266,7 @@ class LLMAdvisor:
             result["gemini_recommendation"] = gemini_rec
             result["gemini_confidence"] = gemini_conf
             result["gemini_reasoning"] = gemini_out.get("reasoning", "")
+            result["gemini_risk_note"] = gemini_out.get("risk_note", "")
             if "error" in gemini_out:
                 result["gemini_error"] = gemini_out["error"]
                 print(f"[LLM][Gemini] error: {gemini_out['error']}")
@@ -245,13 +291,13 @@ class LLMAdvisor:
         gemini_conf: float,
     ) -> tuple:
         """
-        Derive a consensus from available model outputs.
+        Derive a consensus from available model outputs using confidence-weighted voting.
 
         Rules:
-        - If only one model available: use its recommendation
-        - If both available and agree: use their average confidence
-        - If both available but disagree: return HOLD (skip trade)
-        - If neither available: return confirm_side (pass-through)
+        - If neither model is available: pass-through (return confirm_side)
+        - If only one model available: use its recommendation (must have conf > 0.5 to agree)
+        - If both available and agree: use their confidence-weighted average
+        - If both available but disagree: pick higher-confidence model if gap > 0.15, else HOLD
         """
         side = confirm_side.upper()
 
@@ -268,12 +314,26 @@ class LLMAdvisor:
             return side, 0.5
 
         if len(votes) == 1:
-            return votes[0][0], votes[0][1]
+            rec, conf = votes[0]
+            # If single model says HOLD or has low confidence, don't override
+            if rec == "HOLD" or conf < 0.45:
+                return "HOLD", conf
+            return rec, conf
 
         # Both voted
         rec_a, conf_a = votes[0]
         rec_b, conf_b = votes[1]
+
         if rec_a == rec_b:
+            # Unanimous: simple average confidence
             return rec_a, (conf_a + conf_b) / 2.0
-        # Disagreement → HOLD
+
+        # Disagreement: pick higher-confidence if gap is significant
+        if abs(conf_a - conf_b) > 0.20:
+            if conf_a > conf_b:
+                return rec_a, conf_a * 0.8  # small penalty for disagreement
+            else:
+                return rec_b, conf_b * 0.8
+
+        # Close disagreement → HOLD (too uncertain)
         return "HOLD", 0.0

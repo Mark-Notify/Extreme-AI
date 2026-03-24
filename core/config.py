@@ -54,6 +54,10 @@ class Settings:
     # AI probability amplification factor (higher = more aggressive signal separation)
     AI_AMPLIFY_FACTOR: float = field(default_factory=lambda: _float("AI_AMPLIFY_FACTOR", 3.0))
 
+    # ---- Minimum confirm factors (multi-filter) ----
+    # ต้องผ่านอย่างน้อย N ใน 4 filter (EMA trend, BB, Stoch, Volume) จึงจะยิงสัญญาณ
+    MIN_CONFIRM_FACTORS: int = field(default_factory=lambda: _int("MIN_CONFIRM_FACTORS", 2))
+
     # Auto Trading
     AUTO_TRADE_ENABLED: bool = field(default_factory=lambda: _bool("AUTO_TRADE_ENABLED", False))
     MAX_OPEN_TRADES: int = field(default_factory=lambda: _int("MAX_OPEN_TRADES", 3))
@@ -91,6 +95,17 @@ class Settings:
     GEMINI_MODEL: str = field(default_factory=lambda: _str("GEMINI_MODEL", "gemini-1.5-flash"))
     LLM_ADVISOR_ENABLED: bool = field(default_factory=lambda: _bool("LLM_ADVISOR_ENABLED", False))
     LLM_REQUIRE_CONSENSUS: bool = field(default_factory=lambda: _bool("LLM_REQUIRE_CONSENSUS", False))
+
+    # ---- Kelly Criterion ----
+    KELLY_CRITERION_ENABLED: bool = field(default_factory=lambda: _bool("KELLY_CRITERION_ENABLED", False))
+    KELLY_FRACTION: float = field(default_factory=lambda: _float("KELLY_FRACTION", 0.5))  # Half-Kelly
+
+    # ---- Initial balance (for drawdown protection) ----
+    INITIAL_BALANCE: float = field(default_factory=lambda: _float("INITIAL_BALANCE", 0.0))
+
+    # ---- Session filter ----
+    SESSION_FILTER_ENABLED: bool = field(default_factory=lambda: _bool("SESSION_FILTER_ENABLED", False))
+    SESSION_ACTIVE_HOURS: str = field(default_factory=lambda: _str("SESSION_ACTIVE_HOURS", "07:00-17:00"))  # UTC
 
 
 settings = Settings()

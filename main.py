@@ -39,6 +39,78 @@ def classify_zone(rsi_value: float) -> str:
     return "Neutral"
 
 
+def is_session_active() -> bool:
+    """
+    ตรวจสอบว่าตอนนี้อยู่ใน Session ที่กำหนดหรือไม่ (UTC)
+    SESSION_ACTIVE_HOURS = "07:00-17:00" → เทรดเฉพาะช่วง London + NY open
+    """
+    if not getattr(settings, "SESSION_FILTER_ENABLED", False):
+        return True
+
+    hours_str = getattr(settings, "SESSION_ACTIVE_HOURS", "07:00-17:00")
+    try:
+        start_str, end_str = hours_str.split("-")
+        sh, sm = int(start_str.split(":")[0]), int(start_str.split(":")[1])
+        eh, em = int(end_str.split(":")[0]), int(end_str.split(":")[1])
+        now_utc = datetime.now(timezone.utc)
+        now_min = now_utc.hour * 60 + now_utc.minute
+        start_min = sh * 60 + sm
+        end_min = eh * 60 + em
+        return start_min <= now_min < end_min
+    except Exception:
+        return True
+
+
+def count_confirm_factors(last, ai_res: dict, confirm_side: str) -> int:
+    """
+    นับจำนวน confirmation factors ที่สนับสนุนทิศทางที่ต้องการ
+    ใช้กรอง False Signal เพิ่มเติม (ต้องผ่านอย่างน้อย MIN_CONFIRM_FACTORS)
+
+    Factors:
+    1. EMA trend aligned with signal
+    2. Bollinger Band position supports signal
+    3. Stochastic supports signal (oversold/overbought)
+    4. Volume spike (VOL_RATIO > 1.3)
+    5. Candlestick pattern confirms
+    """
+    count = 0
+    side = confirm_side.upper()
+
+    ema_trend = float(last.get("EMA_TREND", 0))
+    bb_pct_b = float(last.get("BB_PCT_B", 0.5))
+    stoch_k = float(last.get("STOCH_K", 50))
+    vol_ratio = float(last.get("VOL_RATIO", 1.0))
+    bullish_engulf = int(last.get("BULLISH_ENGULF", 0))
+    bearish_engulf = int(last.get("BEARISH_ENGULF", 0))
+    hammer = int(last.get("HAMMER", 0))
+    shooting_star = int(last.get("SHOOTING_STAR", 0))
+
+    if side == "BUY":
+        if ema_trend >= 1:
+            count += 1
+        if bb_pct_b < 0.35:
+            count += 1
+        if stoch_k < 40:
+            count += 1
+        if bullish_engulf or hammer:
+            count += 1
+    else:  # SELL
+        if ema_trend <= -1:
+            count += 1
+        if bb_pct_b > 0.65:
+            count += 1
+        if stoch_k > 60:
+            count += 1
+        if bearish_engulf or shooting_star:
+            count += 1
+
+    # Volume spike always counts
+    if vol_ratio > 1.3:
+        count += 1
+
+    return count
+
+
 def main_loop():
     global LAST_AI_LOG_TS
 
@@ -53,6 +125,11 @@ def main_loop():
         loop_started = datetime.now(timezone.utc).isoformat()
 
         try:
+            # 0) Session filter
+            if not is_session_active():
+                time.sleep(settings.LOOP_INTERVAL_SEC)
+                continue
+
             # 1) ดึงข้อมูลราคา / OHLC
             df_raw = get_recent_ohlc(
                 settings.SYMBOL,
@@ -64,7 +141,7 @@ def main_loop():
                 time.sleep(settings.LOOP_INTERVAL_SEC)
                 continue
 
-            # 2) คำนวณ Indicators
+            # 2) คำนวณ Indicators (RSI, MACD, ATR, ADX, EMA, BB, Stoch, Volume, Patterns)
             df = add_all_indicators(df_raw)
             if df.empty:
                 print("[LOOP] indicators empty")
@@ -99,33 +176,57 @@ def main_loop():
             atr_val = float(last["ATR"])
             adx_val = float(last["ADX"])
 
+            # --- ค่า indicator ใหม่ ---
+            ema_trend = float(last.get("EMA_TREND", 0))
+            bb_pct_b = float(last.get("BB_PCT_B", 0.5))
+            bb_width = float(last.get("BB_WIDTH", 0))
+            stoch_k = float(last.get("STOCH_K", 50))
+            vol_ratio = float(last.get("VOL_RATIO", 1.0))
+
             prob_up = float(ai_res["prob_up"])
             prob_down = float(ai_res["prob_down"])
             regime = ai_res["regime"]
             confidence = float(ai_res["confidence"])
 
-            # 4) เงื่อนไข PRE-SIGNAL
+            # Rule-based reasons (for LLM context)
+            rule_reasons = ai_res.get("rule_based", {}).get("reasons", [])
+
+            # 4) เงื่อนไข PRE-SIGNAL (ใช้ multi-factor)
             pre = None
-            if (
-                zone in ("Oversold", "Overbought")
-                or abs(macd_hist) > 0.2
-                or confidence > 0.6
-            ):
+            pre_score = 0
+            if zone in ("Oversold", "Overbought"):
+                pre_score += 1
+            if abs(macd_hist) > 0.15:
+                pre_score += 1
+            if confidence > 0.55:
+                pre_score += 1
+            if abs(ema_trend) >= 1:
+                pre_score += 1
+            if bb_pct_b < 0.20 or bb_pct_b > 0.80:
+                pre_score += 1
+
+            if pre_score >= 2:
                 pre = {
                     "type": "PRE",
                     "side_hint": "BUY" if prob_up > prob_down else "SELL",
+                    "score": pre_score,
                 }
 
             # 5) เงื่อนไข CONFIRM-SIGNAL (เลือกตาม AI_MODE)
             th_up, th_down, th_conf, macd_margin = get_ai_confirm_thresholds()
+            min_factors = getattr(settings, "MIN_CONFIRM_FACTORS", 2)
 
             confirm = None
             # BUY: prob_up สูงพอ, MACD ไม่สวนแรงลง, confidence ถึง
             if prob_up > th_up and macd_hist > -macd_margin and confidence > th_conf:
-                confirm = {"type": "CONFIRM", "side": "BUY"}
+                factors = count_confirm_factors(last, ai_res, "BUY")
+                if factors >= min_factors:
+                    confirm = {"type": "CONFIRM", "side": "BUY", "factors": factors}
             # SELL: prob_down สูงพอ, MACD ไม่สวนแรงขึ้น, confidence ถึง
             elif prob_down > th_down and macd_hist < macd_margin and confidence > th_conf:
-                confirm = {"type": "CONFIRM", "side": "SELL"}
+                factors = count_confirm_factors(last, ai_res, "SELL")
+                if factors >= min_factors:
+                    confirm = {"type": "CONFIRM", "side": "SELL", "factors": factors}
 
             pre_ts = None
             confirm_ts = None
@@ -149,6 +250,8 @@ def main_loop():
                     f"AI Prob Up: {prob_up:.2%} / Down: {prob_down:.2%}\n"
                     f"RSI: {rsi_val:.2f} ({zone})\n"
                     f"MACD Hist: {macd_hist:.4f}\n"
+                    f"EMA Trend: {int(ema_trend):+d}\n"
+                    f"BB %B: {bb_pct_b:.2f}\n"
                     f"Regime: {regime}\n"
                     f"Side Hint: {pre['side_hint']}"
                 )
@@ -158,6 +261,7 @@ def main_loop():
             # 7) CONFIRM notify + auto trade (พร้อม SL/TP จาก AI)
             llm_result: dict = {}
             if confirm:
+                factors_str = f"Factors: {confirm['factors']}/5"
                 msg = (
                     f"Symbol: {settings.SYMBOL}\n"
                     f"Price: {price}\n"
@@ -165,11 +269,13 @@ def main_loop():
                     f"AI Prob Up: {prob_up:.2%} / Down: {prob_down:.2%}\n"
                     f"RSI: {rsi_val:.2f} ({zone})\n"
                     f"MACD Hist: {macd_hist:.4f}\n"
-                    f"Regime: {regime}\n"
+                    f"EMA Trend: {int(ema_trend):+d} | BB%B: {bb_pct_b:.2f}\n"
+                    f"Stoch K: {stoch_k:.1f} | Vol: x{vol_ratio:.1f}\n"
+                    f"Regime: {regime} | {factors_str}\n"
                     f"Confidence: {confidence:.2f}"
                 )
 
-                # 7a) LLM confirmation (GPT + Gemini)
+                # 7a) LLM confirmation (GPT + Gemini) — ส่ง context เพิ่มขึ้น
                 market_snapshot = {
                     "symbol": settings.SYMBOL,
                     "price": price,
@@ -183,6 +289,13 @@ def main_loop():
                     "ai_prob_down": prob_down,
                     "ai_confidence": confidence,
                     "ai_direction": ai_res["direction"],
+                    # New context fields
+                    "ema_trend": ema_trend,
+                    "bb_pct_b": bb_pct_b,
+                    "bb_width": bb_width,
+                    "stoch_k": stoch_k,
+                    "vol_ratio": vol_ratio,
+                    "rule_reasons": rule_reasons,
                 }
                 llm_result = llm_advisor.analyze_signal(market_snapshot, confirm["side"])
 
@@ -218,13 +331,15 @@ def main_loop():
                             risk_percent=settings.RISK_PER_TRADE,
                         )
 
-                        # 7d) ให้ AI ช่วยคิด SL/TP
+                        # 7d) ให้ AI ช่วยคิด SL/TP (ใช้ bb_width + adx เพิ่มเติม)
                         sl_price, tp_price = compute_sl_tp_by_ai(
                             entry_price=price,
                             side=confirm["side"],
                             atr=atr_val,
                             regime=regime,
                             confidence=confidence,
+                            bb_width=bb_width,
+                            adx=adx_val,
                         )
 
                         trade_result = execute_order(
@@ -254,6 +369,11 @@ def main_loop():
                 "macd_hist": macd_hist,
                 "atr": atr_val,
                 "adx": adx_val,
+                "ema_trend": ema_trend,
+                "bb_pct_b": bb_pct_b,
+                "bb_width": bb_width,
+                "stoch_k": stoch_k,
+                "vol_ratio": vol_ratio,
                 "ret": float(last["RET"]),
                 "ai_prob_up": prob_up,
                 "ai_prob_down": prob_down,
@@ -279,6 +399,11 @@ def main_loop():
                 "macd_hist": macd_hist,
                 "atr": atr_val,
                 "adx": adx_val,
+                "ema_trend": ema_trend,
+                "bb_pct_b": bb_pct_b,
+                "bb_width": bb_width,
+                "stoch_k": stoch_k,
+                "vol_ratio": vol_ratio,
                 "ai_prob_up": prob_up,
                 "ai_prob_down": prob_down,
                 "ai_direction": ai_res["direction"],
@@ -310,7 +435,8 @@ def main_loop():
 
             print(
                 f"[LOOP] {settings.SYMBOL} price={price:.2f} "
-                f"AI dir={ai_res['direction']} up={prob_up:.2%} regime={regime}"
+                f"AI dir={ai_res['direction']} up={prob_up:.2%} "
+                f"regime={regime} EMA={int(ema_trend):+d} BB%B={bb_pct_b:.2f}"
             )
 
         except KeyboardInterrupt:
