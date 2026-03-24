@@ -1,4 +1,6 @@
+from datetime import datetime, timedelta, timezone
 from typing import Optional
+
 import MetaTrader5 as mt5
 import pandas as pd
 
@@ -43,6 +45,48 @@ def get_recent_ohlc(symbol: str, timeframe: str, bars: int) -> Optional[pd.DataF
     tf = tf_map.get(timeframe.upper(), mt5.TIMEFRAME_M1)
     rates = mt5.copy_rates_from_pos(symbol, tf, 0, bars)
     if rates is None:
+        return None
+
+    df = pd.DataFrame(rates)
+    df["time"] = pd.to_datetime(df["time"], unit="s")
+    df.rename(
+        columns={
+            "open": "Open",
+            "high": "High",
+            "low": "Low",
+            "close": "Close",
+            "tick_volume": "Volume",
+        },
+        inplace=True,
+    )
+    return df[["time", "Open", "High", "Low", "Close", "Volume"]]
+
+
+@safe_call(default=None)
+def get_historical_ohlc(
+    symbol: str, timeframe: str, years: int = 1
+) -> Optional[pd.DataFrame]:
+    """
+    ดึงข้อมูลแท่งเทียนย้อนหลัง N ปีจาก MT5
+    ใช้สำหรับเทรน AI Model ด้วยข้อมูลในอดีต
+    """
+    tf_map = {
+        "M1": mt5.TIMEFRAME_M1,
+        "M5": mt5.TIMEFRAME_M5,
+        "M15": mt5.TIMEFRAME_M15,
+        "M30": mt5.TIMEFRAME_M30,
+        "H1": mt5.TIMEFRAME_H1,
+        "H4": mt5.TIMEFRAME_H4,
+        "D1": mt5.TIMEFRAME_D1,
+    }
+    tf = tf_map.get(timeframe.upper(), mt5.TIMEFRAME_M1)
+
+    date_to = datetime.now(timezone.utc)
+    date_from = date_to - timedelta(days=int(365.25 * years))
+
+    rates = mt5.copy_rates_range(symbol, tf, date_from, date_to)
+    if rates is None or len(rates) == 0:
+        print(f"[MT5] get_historical_ohlc: no data for {symbol} {timeframe}")
         return None
 
     df = pd.DataFrame(rates)

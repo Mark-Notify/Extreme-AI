@@ -7,6 +7,7 @@ from typing import Optional
 import pandas as pd
 
 from core.config import settings
+from core.data_feed import init_mt5, get_historical_ohlc
 from core.indicators import add_all_indicators
 from core.lstm_model import ExtremeLSTM
 
@@ -71,30 +72,46 @@ def load_ai_logs(days: Optional[int] = None) -> pd.DataFrame:
 
 def main():
     base_dir = os.path.dirname(settings.AI_LOG_PATH) or "logs"
-    print("[TRAIN_AI] loading all available logs from", base_dir)
 
-    try:
-        df_log = load_ai_logs(days=None)
-    except FileNotFoundError as e:
-        print("[TRAIN_AI] no log files found:", e)
-        return
+    # --- ลองดึงข้อมูลย้อนหลัง 1 ปีจาก MT5 ก่อน ---
+    df_ind = None
+    if init_mt5():
+        print("[TRAIN_AI] fetching 1-year historical data from MT5...")
+        df_hist = get_historical_ohlc(settings.SYMBOL, settings.TIMEFRAME, years=1)
+        if df_hist is not None and not df_hist.empty:
+            print(f"[TRAIN_AI] MT5 historical bars: {len(df_hist)}")
+            df_ind = add_all_indicators(df_hist)
+            if df_ind.empty:
+                print("[TRAIN_AI] no indicator data from MT5 history, falling back to logs")
+                df_ind = None
+        else:
+            print("[TRAIN_AI] MT5 historical data unavailable, falling back to logs")
 
-    if df_log.empty:
-        print("[TRAIN_AI] no log rows to train")
-        return
+    # --- Fallback: โหลดจาก log files ถ้า MT5 ไม่มีข้อมูล ---
+    if df_ind is None:
+        print("[TRAIN_AI] loading all available logs from", base_dir)
+        try:
+            df_log = load_ai_logs(days=None)
+        except FileNotFoundError as e:
+            print("[TRAIN_AI] no log files found:", e)
+            return
 
-    # ใช้ time + close ทำเป็น pseudo OHLC
-    df_price = df_log[["time", "close"]].copy()
-    df_price.rename(columns={"time": "time", "close": "Close"}, inplace=True)
-    df_price["Open"] = df_price["Close"]
-    df_price["High"] = df_price["Close"]
-    df_price["Low"] = df_price["Close"]
-    df_price["Volume"] = 0
+        if df_log.empty:
+            print("[TRAIN_AI] no log rows to train")
+            return
 
-    df_ind = add_all_indicators(df_price)
-    if df_ind.empty:
-        print("[TRAIN_AI] no indicator data after transform")
-        return
+        # ใช้ time + close ทำเป็น pseudo OHLC
+        df_price = df_log[["time", "close"]].copy()
+        df_price.rename(columns={"time": "time", "close": "Close"}, inplace=True)
+        df_price["Open"] = df_price["Close"]
+        df_price["High"] = df_price["Close"]
+        df_price["Low"] = df_price["Close"]
+        df_price["Volume"] = 0
+
+        df_ind = add_all_indicators(df_price)
+        if df_ind.empty:
+            print("[TRAIN_AI] no indicator data after transform")
+            return
 
     model = ExtremeLSTM()
     print("[TRAIN_AI] start training...")
