@@ -11,3 +11,4 @@ websockets
 torch
 openai>=1.11.0
 google-generativeai>=0.8.0
+fastapi==0.117.1
