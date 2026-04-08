@@ -62,5 +62,13 @@ def notify_trade(message: str):
     _post("🤖 **Executed Trade**\n" + message)
 
 
+def notify_ai_result(message: str):
+    """
+    ส่งผล AI ที่ได้แต่ละรอบไปยัง Discord
+    เรียกจาก main.py โดย rate-limit ตาม AI_LOG_INTERVAL_SEC
+    """
+    _post("📊 **AI Result**\n" + message)
+
+
 def notify_error(message: str):
     _post("⚠️ **Error**\n" + message)
