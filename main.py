@@ -18,11 +18,13 @@ from core.discord_notifier import (
     notify_confirm_signal,
     notify_trade,
     notify_error,
+    notify_ai_result,
 )
 
 # เขียน log ลงไฟล์สำหรับเทรน ไม่ต้องทุก loop
 AI_LOG_INTERVAL_SEC = getattr(settings, "AI_LOG_INTERVAL_SEC", 5)
 LAST_AI_LOG_TS = 0.0
+LAST_AI_DISCORD_TS = 0.0
 
 # ถ้าใช้ AI Insight Panel (Rule vs LSTM + disagreement)
 STATS_AI = {
@@ -112,7 +114,7 @@ def count_confirm_factors(last, ai_res: dict, confirm_side: str) -> int:
 
 
 def main_loop():
-    global LAST_AI_LOG_TS
+    global LAST_AI_LOG_TS, LAST_AI_DISCORD_TS
 
     print("[ExtremeAI v4] starting...")
     init_mt5()
@@ -388,6 +390,22 @@ def main_loop():
             if now_ts - LAST_AI_LOG_TS >= AI_LOG_INTERVAL_SEC:
                 append_ai_log(log_record)
                 LAST_AI_LOG_TS = now_ts
+
+            # 9b) ส่งผล AI ไปยัง Discord (rate-limited ตาม AI_LOG_INTERVAL_SEC)
+            if now_ts - LAST_AI_DISCORD_TS >= AI_LOG_INTERVAL_SEC:
+                ai_msg = (
+                    f"Symbol: {settings.SYMBOL}\n"
+                    f"Price: {price:.2f}\n"
+                    f"AI Direction: {ai_res['direction']}\n"
+                    f"Prob Up: {prob_up:.2%} / Down: {prob_down:.2%}\n"
+                    f"Confidence: {confidence:.2f}\n"
+                    f"Regime: {regime}\n"
+                    f"RSI: {rsi_val:.2f} ({zone}) | MACD: {macd_hist:.4f}\n"
+                    f"EMA Trend: {int(ema_trend):+d} | BB%B: {bb_pct_b:.2f}\n"
+                    f"Stoch K: {stoch_k:.1f} | Vol: x{vol_ratio:.1f}"
+                )
+                notify_ai_result(ai_msg)
+                LAST_AI_DISCORD_TS = now_ts
 
             # 10) last_state สำหรับ Dashboard / WebSocket (อัปเดตทุก loop)
             last_state = {
