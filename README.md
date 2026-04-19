@@ -175,7 +175,8 @@ MT5_PASSWORD=yourpassword       # รหัสผ่าน
 | `TIMEFRAME` | `M1` | M1=1นาที, M5=5นาที, M15=15นาที |
 | `LOOP_INTERVAL_SEC` | `1` | วิเคราะห์ทุก N วินาที |
 | `AI_MODE` | `NORMAL` | SAFE/NORMAL/AGGRESSIVE |
-| `LOOKBACK_BARS` | `500` | จำนวนแท่งย้อนหลัง |
+| `LOOKBACK_BARS` | `500` | จำนวนแท่งย้อนหลังสำหรับ live loop |
+| `TRAIN_BARS` | `5000` | จำนวนแท่งสำหรับเทรน LSTM (ดึงจาก MT5) |
 
 ### การตั้งค่า Risk Management
 
@@ -251,7 +252,7 @@ cp .env.example .env
 # 2. เริ่มรันบัญชี DEMO ก่อน (ทดสอบ 1-2 สัปดาห์)
 python main.py
 
-# 3. เก็บ log สัก 1-2 วัน แล้วเทรน LSTM
+# 3. เทรน LSTM โดยดึงข้อมูลย้อนหลังจาก MT5 โดยตรง (ไม่ต้องรอเก็บ log)
 python -m scripts.train_ai
 
 # 4. รัน dashboard ดู real-time
@@ -407,19 +408,29 @@ LLM จะได้รับ snapshot ครบถ้วน รวมถึง:
 
 ### เริ่มต้น
 
-รันบอทสัก 1-2 วัน เพื่อเก็บ log ให้มีข้อมูลพอ จากนั้น:
+ไม่ต้องรอเก็บ log ในเครื่อง — สคริปต์ดึงข้อมูล OHLCV ย้อนหลังจาก MT5 โดยตรง  
+เพียงแค่ MT5 เชื่อมต่อได้ก็เทรนได้ทันที:
 
 ```bash
 python -m scripts.train_ai
 ```
 
 สคริปต์จะ:
-1. โหลด `logs/ai_log_*.jsonl`
-2. สร้าง feature matrix (60 แท่ง × 7 features)
-3. เทรน LSTM 5 epochs
-4. บันทึก `models/extreme_lstm.keras`
+1. เชื่อมต่อ MT5 (ใช้ MT5_LOGIN / MT5_PASSWORD / MT5_SERVER ใน `.env`)
+2. ดึงข้อมูล OHLCV ย้อนหลัง `TRAIN_BARS` แท่ง (ค่าเริ่มต้น 5,000 แท่ง) มาโดยตรง
+3. คำนวณ indicators ครบชุด (RSI, MACD, ATR, ADX, EMA, BB, Stoch, Volume)
+4. สร้าง feature matrix (60 แท่ง × 7 features) และเทรน LSTM 5 epochs
+5. บันทึก `models/extreme_lstm.keras` + `logs/last_train.json`
 
 หลังเทรนเสร็จ บอทจะใช้ LSTM อัตโนมัติ (LSTM 70% + Rule-based 30%)
+
+### ปรับจำนวนแท่งสำหรับเทรน
+
+```env
+TRAIN_BARS=5000   # ค่าเริ่มต้น — แนะนำ 3000–10000
+```
+
+> ยิ่งมากแท่ง → model แม่นขึ้น แต่ใช้เวลาเทรนนานขึ้นเล็กน้อย
 
 ### ตรวจสอบ AI Performance
 
@@ -559,8 +570,19 @@ AI_CONFIRM_CONFIDENCE_THRESHOLD=0.35
 ```
 
 **แก้ไข:**
-- รัน `python -m scripts.train_ai` ก่อน
+- รัน `python -m scripts.train_ai` (MT5 ต้องเชื่อมต่ออยู่)
 - ตรวจว่าไฟล์ `models/extreme_lstm.keras` มีอยู่
+
+### Train AI ล้มเหลว
+
+```
+[TRAIN_AI] ❌ MT5 connect failed.
+```
+
+**แก้ไข:**
+- ตรวจสอบ MetaTrader 5 เปิดอยู่บนเครื่อง
+- ตรวจสอบ `MT5_LOGIN` / `MT5_PASSWORD` / `MT5_SERVER` ใน `.env` ถูกต้อง
+- ตรวจสอบ `SYMBOL` และ `TIMEFRAME` ตรงกับที่โบรกรองรับ
 
 ### LLM Error
 

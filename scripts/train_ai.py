@@ -1,100 +1,52 @@
-import glob
+"""ดึงข้อมูล OHLCV ย้อนหลังจาก MT5 โดยตรงแล้วเทรน LSTM
+ไม่ต้องรอเก็บ log ในเครื่อง — เพียงแค่ MT5 เชื่อมต่อได้ก็เทรนได้ทันที
+"""
+
 import json
 import os
-from datetime import datetime, timedelta, timezone
-from typing import Optional
-
-import pandas as pd
+from datetime import datetime, timezone
 
 from core.config import settings
+from core.data_feed import init_mt5, get_recent_ohlc
 from core.indicators import add_all_indicators
 from core.lstm_model import ExtremeLSTM
 
 
-def load_ai_logs(days: Optional[int] = None) -> pd.DataFrame:
-    """
-    อ่าน log หลายไฟล์:
-    - ถ้า days เป็น None จะโหลดไฟล์ jsonl ทั้งหมดที่มี
-    - ถ้าเป็นจำนวนเต็ม จะเลือกไฟล์ในช่วง N วันล่าสุด
-    """
-    base_dir = os.path.dirname(settings.AI_LOG_PATH) or "logs"
-    pattern = os.path.join(base_dir, "ai_log_*.jsonl")
-    files = sorted(glob.glob(pattern))
-    if not files:
-        raise FileNotFoundError(pattern)
-
-    if days is None:
-        # ใช้ไฟล์ทั้งหมด (เรียงตามชื่อ/วันที่)
-        selected = files
-    else:
-        cutoff = datetime.now(timezone.utc).date() - timedelta(days=days - 1)
-        selected = []
-
-        # ไล่จากไฟล์ใหม่ไปเก่า
-        for path in reversed(files):
-            name = os.path.basename(path)  # ai_log_YYYY-MM-DD.jsonl
-            try:
-                date_str = name.replace("ai_log_", "").replace(".jsonl", "")
-                d = datetime.strptime(date_str, "%Y-%m-%d").date()
-            except Exception:
-                continue
-            if d >= cutoff:
-                selected.append(path)
-
-        # ถ้าไม่มีไฟล์ในช่วง N วัน ให้ fallback เป็นไฟล์ล่าสุดไฟล์เดียว
-        if not selected:
-            selected = [files[-1]]
-
-    rows = []
-    for path in selected:
-        print(f"[TRAIN_AI] read log: {path}")
-        with open(path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rows.append(json.loads(line))
-                except Exception:
-                    continue
-
-    df = pd.DataFrame(rows)
-    if df.empty:
-        return df
-
-    if "time" in df.columns:
-        df["time"] = pd.to_datetime(df["time"])
-        df.sort_values("time", inplace=True)
-
-    return df
-
-
 def main():
-    base_dir = os.path.dirname(settings.AI_LOG_PATH) or "logs"
-    print("[TRAIN_AI] loading all available logs from", base_dir)
-
-    try:
-        df_log = load_ai_logs(days=None)
-    except FileNotFoundError as e:
-        print("[TRAIN_AI] no log files found:", e)
+    print("[TRAIN_AI] connecting to MT5...")
+    ok = init_mt5()
+    if not ok:
+        print(
+            "[TRAIN_AI] ❌ MT5 connect failed. "
+            "ตรวจสอบ MT5_LOGIN / MT5_PASSWORD / MT5_SERVER ใน .env "
+            "และให้ MetaTrader 5 เปิดอยู่บนเครื่อง"
+        )
         return
 
-    if df_log.empty:
-        print("[TRAIN_AI] no log rows to train")
+    bars = settings.TRAIN_BARS
+    symbol = settings.SYMBOL
+    timeframe = settings.TIMEFRAME
+
+    print(f"[TRAIN_AI] fetching {bars} bars of {symbol} {timeframe} from MT5...")
+    df_raw = get_recent_ohlc(symbol, timeframe, bars)
+    if df_raw is None or df_raw.empty:
+        print(
+            "[TRAIN_AI] ❌ ไม่ได้รับข้อมูลจาก MT5 "
+            "ตรวจสอบ SYMBOL / TIMEFRAME ใน .env ว่าตรงกับที่โบรกใช้"
+        )
         return
 
-    # ใช้ time + close ทำเป็น pseudo OHLC
-    df_price = df_log[["time", "close"]].copy()
-    df_price.rename(columns={"time": "time", "close": "Close"}, inplace=True)
-    df_price["Open"] = df_price["Close"]
-    df_price["High"] = df_price["Close"]
-    df_price["Low"] = df_price["Close"]
-    df_price["Volume"] = 0
+    print(
+        f"[TRAIN_AI] got {len(df_raw)} bars "
+        f"({df_raw['time'].iloc[0]} → {df_raw['time'].iloc[-1]})"
+    )
 
-    df_ind = add_all_indicators(df_price)
+    df_ind = add_all_indicators(df_raw)
     if df_ind.empty:
-        print("[TRAIN_AI] no indicator data after transform")
+        print("[TRAIN_AI] ❌ no indicator data after transform")
         return
+
+    print(f"[TRAIN_AI] indicator rows: {len(df_ind)}")
 
     model = ExtremeLSTM()
     print("[TRAIN_AI] start training...")
@@ -102,13 +54,16 @@ def main():
 
     os.makedirs(os.path.dirname(settings.LSTM_MODEL_PATH), exist_ok=True)
     model.save(settings.LSTM_MODEL_PATH)
-    print("[TRAIN_AI] Saved model to", settings.LSTM_MODEL_PATH)
+    print("[TRAIN_AI] ✅ saved model to", settings.LSTM_MODEL_PATH)
 
-    # บันทึก meta สำหรับ Dashboard (เวลาที่ train ล่าสุด ฯลฯ)
     meta = {
-        "last_train_time": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+        "last_train_time": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "samples": int(len(df_ind)),
+        "bars_fetched": int(len(df_raw)),
+        "symbol": symbol,
+        "timeframe": timeframe,
         "epochs": 5,
+        "source": "MT5",
     }
     os.makedirs("logs", exist_ok=True)
     with open("logs/last_train.json", "w", encoding="utf-8") as f:

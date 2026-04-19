@@ -36,6 +36,7 @@ class Settings:
     AI_LOG_INTERVAL_SEC: int = field(default_factory=lambda: _int("AI_LOG_INTERVAL_SEC", 5))
     DASHBOARD_REFRESH_SEC: int = field(default_factory=lambda: _int("DASHBOARD_REFRESH_SEC", 5))
     LOOKBACK_BARS: int = field(default_factory=lambda: _int("LOOKBACK_BARS", 500))
+    TRAIN_BARS: int = field(default_factory=lambda: _int("TRAIN_BARS", 5000))
 
     # MT5 Connection
     MT5_SERVER: str = field(default_factory=lambda: _str("MT5_SERVER", ""))
