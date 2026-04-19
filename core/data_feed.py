@@ -1,6 +1,11 @@
+import sys
 from typing import Optional
-import MetaTrader5 as mt5
 import pandas as pd
+
+if sys.platform == "win32":
+    import MetaTrader5 as mt5
+else:
+    mt5 = None  # type: ignore[assignment]
 
 from .config import settings
 from .stability import safe_call
@@ -8,6 +13,9 @@ from .stability import safe_call
 
 @safe_call(default=False)
 def init_mt5() -> bool:
+    if mt5 is None:
+        print("[MT5] MetaTrader5 is not available on this platform")
+        return False
     if not mt5.initialize():
         print("[MT5] initialize() failed")
         return False
@@ -31,6 +39,8 @@ def get_recent_ohlc(symbol: str, timeframe: str, bars: int) -> Optional[pd.DataF
     ดึงข้อมูลแท่งเทียนจาก MT5 -> pandas DataFrame
     timeframe: เช่น 'M1', 'M5', 'H1'
     """
+    if mt5 is None:
+        return None
     tf_map = {
         "M1": mt5.TIMEFRAME_M1,
         "M5": mt5.TIMEFRAME_M5,

@@ -1,7 +1,12 @@
 # core/mt5_trader.py
+import sys
 from typing import Optional
 
-import MetaTrader5 as mt5
+if sys.platform == "win32":
+    import MetaTrader5 as mt5
+else:
+    mt5 = None  # type: ignore[assignment]
+
 from .config import settings
 
 
@@ -14,6 +19,8 @@ def _get_filling_mode(symbol: str) -> Optional[int]:
       4 = ORDER_FILLING_RETURN
     คืนค่า None ถ้าไม่สามารถหา filling mode ที่รองรับได้
     """
+    if mt5 is None:
+        return None
     info = mt5.symbol_info(symbol)
     if info is None:
         return None
@@ -39,6 +46,8 @@ def execute_order(
     ยิงออเดอร์ทันที (market order) พร้อม SL/TP ถ้ามี
     สมมติว่า init_mt5() / login ถูกเรียกจากที่อื่นแล้ว (main หรือ dashboard)
     """
+    if mt5 is None:
+        return {"error": "mt5_not_available"}
     side = side.upper()
 
     tick = mt5.symbol_info_tick(symbol)
@@ -84,6 +93,8 @@ def get_account_balance() -> float:
     """
     ดึง Balance ปัจจุบันจาก MT5
     """
+    if mt5 is None:
+        return 0.0
     info = mt5.account_info()
     if info is None:
         return 0.0
@@ -94,6 +105,8 @@ def get_open_trades_count(symbol: Optional[str] = None) -> int:
     """
     นับจำนวนไม้ที่เปิดอยู่ (option: filter ตาม symbol)
     """
+    if mt5 is None:
+        return 0
     orders = mt5.positions_get()
     if orders is None:
         return 0
