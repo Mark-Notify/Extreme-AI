@@ -57,7 +57,7 @@ def main():
     print("[TRAIN_AI] ✅ saved model to", settings.LSTM_MODEL_PATH)
 
     meta = {
-        "last_train_time": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "last_train_time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "samples": int(len(df_ind)),
         "bars_fetched": int(len(df_raw)),
         "symbol": symbol,
