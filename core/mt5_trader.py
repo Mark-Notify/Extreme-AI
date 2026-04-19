@@ -5,6 +5,29 @@ import MetaTrader5 as mt5
 from .config import settings
 
 
+def _get_filling_mode(symbol: str) -> Optional[int]:
+    """
+    ตรวจสอบ filling mode ที่ broker รองรับสำหรับ symbol นั้น ๆ
+    MT5 filling_mode เป็น bitmask:
+      1 = ORDER_FILLING_FOK
+      2 = ORDER_FILLING_IOC
+      4 = ORDER_FILLING_RETURN
+    คืนค่า None ถ้าไม่สามารถหา filling mode ที่รองรับได้
+    """
+    info = mt5.symbol_info(symbol)
+    if info is None:
+        return None
+
+    filling_mode = info.filling_mode
+    if filling_mode & 1:  # FOK supported
+        return mt5.ORDER_FILLING_FOK
+    if filling_mode & 2:  # IOC supported
+        return mt5.ORDER_FILLING_IOC
+    if filling_mode & 4:  # RETURN supported
+        return mt5.ORDER_FILLING_RETURN
+    return None
+
+
 def execute_order(
     symbol: str,
     side: str,
@@ -29,6 +52,10 @@ def execute_order(
         price = tick.bid
         order_type = mt5.ORDER_TYPE_SELL
 
+    filling_mode = _get_filling_mode(symbol)
+    if filling_mode is None:
+        return {"error": "unsupported_filling_mode"}
+
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": symbol,
@@ -38,7 +65,7 @@ def execute_order(
         "deviation": getattr(settings, "MT5_DEVIATION", 20),
         "magic": getattr(settings, "MT5_MAGIC_NUMBER", 123456),
         "comment": "ExtremeAI v4",
-        "type_filling": mt5.ORDER_FILLING_FOK,
+        "type_filling": filling_mode,
     }
 
     if sl is not None:
