@@ -47,7 +47,7 @@ def execute_order(
     สมมติว่า init_mt5() / login ถูกเรียกจากที่อื่นแล้ว (main หรือ dashboard)
     """
     if mt5 is None:
-        return {"error": "mt5_not_available"}
+        return {"error": "MetaTrader5 is not available on this platform"}
     side = side.upper()
 
     tick = mt5.symbol_info_tick(symbol)
