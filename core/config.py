@@ -92,7 +92,7 @@ class Settings:
     OPENAI_API_KEY: str = field(default_factory=lambda: _str("OPENAI_API_KEY", ""))
     OPENAI_MODEL: str = field(default_factory=lambda: _str("OPENAI_MODEL", "gpt-4o-mini"))
     GEMINI_API_KEY: str = field(default_factory=lambda: _str("GEMINI_API_KEY", ""))
-    GEMINI_MODEL: str = field(default_factory=lambda: _str("GEMINI_MODEL", "gemini-1.5-flash"))
+    GEMINI_MODEL: str = field(default_factory=lambda: _str("GEMINI_MODEL", "gemini-2.0-flash"))
     LLM_ADVISOR_ENABLED: bool = field(default_factory=lambda: _bool("LLM_ADVISOR_ENABLED", False))
     LLM_REQUIRE_CONSENSUS: bool = field(default_factory=lambda: _bool("LLM_REQUIRE_CONSENSUS", False))
 

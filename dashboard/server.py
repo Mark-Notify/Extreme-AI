@@ -29,7 +29,7 @@ async def index(request: Request):
     # return templates.TemplateResponse("classic_index.html", {"request": request})
     # return templates.TemplateResponse("minimal_index.html", {"request": request})
     # return templates.TemplateResponse("premium_index.html", {"request": request})
-    return templates.TemplateResponse("luxury_index.html", {"request": request})
+    return templates.TemplateResponse("index_v5.html", {"request": request})
 
 
 def load_last_state() -> Dict[str, Any]:
@@ -220,7 +220,16 @@ def _eval_ai_core(df: pd.DataFrame, horizon: int = 5, only_confirm: bool = False
     df = df.copy()
 
     if only_confirm:
-        df = df[df.get("confirm_signal", False)].copy()
+        if "confirm_signal" not in df.columns:
+            return {
+                "samples": 0,
+                "direction_acc": None,
+                "winrate": None,
+                "avg_pnl": None,
+                "avg_win": None,
+                "avg_loss": None,
+            }
+        df = df[df["confirm_signal"] == True].copy()
         if df.empty:
             return {
                 "samples": 0,

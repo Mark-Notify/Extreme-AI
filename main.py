@@ -393,6 +393,7 @@ def main_loop():
             last_state = {
                 "loop_started": loop_started,
                 "symbol": settings.SYMBOL,
+                "timeframe": settings.TIMEFRAME,
                 "price": price,
                 "rsi": rsi_val,
                 "rsi_zone": zone,
@@ -427,8 +428,10 @@ def main_loop():
                 "llm_consensus_confidence": llm_result.get("consensus_confidence"),
                 "llm_agrees": llm_result.get("llm_agrees"),
                 "llm_gpt_rec": llm_result.get("gpt_recommendation"),
+                "llm_gpt_confidence": llm_result.get("gpt_confidence"),
                 "llm_gpt_reasoning": llm_result.get("gpt_reasoning"),
                 "llm_gemini_rec": llm_result.get("gemini_recommendation"),
+                "llm_gemini_confidence": llm_result.get("gemini_confidence"),
                 "llm_gemini_reasoning": llm_result.get("gemini_reasoning"),
             }
             write_last_state(last_state)
