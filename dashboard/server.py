@@ -5,6 +5,7 @@ import glob
 import logging
 import numpy as np
 import pandas as pd
+from pathlib import Path
 from typing import Any, Dict
 
 from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect, APIRouter
@@ -19,9 +20,11 @@ from core.mt5_trader import execute_order
 from core.discord_notifier import notify_trade
 from core.trade_utils import compute_sl_tp_by_ai
 
+_DASHBOARD_DIR = Path(__file__).parent.resolve()
+
 app = FastAPI()
-app.mount("/static", StaticFiles(directory="dashboard/static"), name="static")
-templates = Jinja2Templates(directory="dashboard/templates")
+app.mount("/static", StaticFiles(directory=str(_DASHBOARD_DIR / "static")), name="static")
+templates = Jinja2Templates(directory=str(_DASHBOARD_DIR / "templates"))
 
 
 @app.get("/", response_class=HTMLResponse)
