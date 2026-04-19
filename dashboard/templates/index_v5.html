@@ -823,7 +823,8 @@
     const el = $(id);
     if (!el) return;
     el.classList.remove('flashing');
-    void el.offsetWidth;
+    // eslint-disable-next-line no-unused-expressions
+    el.offsetHeight; // trigger reflow so the animation restarts
     el.classList.add('flashing');
     el.addEventListener('animationend', () => el.classList.remove('flashing'), { once: true });
   }

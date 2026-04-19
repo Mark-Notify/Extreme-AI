@@ -229,7 +229,7 @@ def _eval_ai_core(df: pd.DataFrame, horizon: int = 5, only_confirm: bool = False
                 "avg_win": None,
                 "avg_loss": None,
             }
-        df = df[df["confirm_signal"] == True].copy()
+        df = df[df["confirm_signal"]].copy()
         if df.empty:
             return {
                 "samples": 0,
